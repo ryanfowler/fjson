@@ -1,0 +1,31 @@
+
+        
+                // Leading comment.
+        
+                // And another.
+                { // Object start.
+        
+                    "key": "val", // Line comment.
+
+                    "k2" // Before colon.
+                    : "v2",
+
+                    "k3": // Before value.
+                    "v3",
+
+                    "k4": "v4" // Before comma.
+
+                    ,
+                    "k5": "v5",
+                    // Below line.
+                    // And another below.
+        
+                    // Another comment.
+        
+                    // And another.
+                    "key2": "val2",
+                } // Object end.
+
+                // One last comment.
+                
+                
