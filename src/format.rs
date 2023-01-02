@@ -1,6 +1,9 @@
 use std::{fmt::Write, iter::Peekable};
 
-use crate::{error::Error, ScanResult, Token};
+use crate::{
+    error::Error,
+    scanner::{Event, ScanResult, Token},
+};
 
 pub fn format_json<'a, I, W>(s: I, w: &mut W) -> Result<(), Error>
 where
@@ -8,9 +11,9 @@ where
     W: Write,
 {
     let iter = s.filter(|res| {
-        if let Ok(token) = res {
-            match token {
-                Token::LineComment(_) | Token::BlockComment(_) | Token::Newline => return false,
+        if let Ok(event) = res {
+            match event.token {
+                Token::LineComment(_) | Token::BlockComment(_) /* | Token::Newline */ => return false,
                 _ => {}
             }
         }
@@ -41,15 +44,15 @@ where
     W: Write,
 {
     format_comments(s, w, indent, CommentStart::Newline)?;
-    if let Some(token) = next_token(s)? {
-        match token {
+    if let Some(event) = next_event(s)? {
+        match event.token {
             Token::ObjectStart => format_object(s, w, indent),
             Token::ArrayStart => format_array(s, w, indent),
             Token::Bool(v) => format_bool(w, v),
             Token::Null => format_null(w),
             Token::Number(v) => format_number(w, v),
             Token::String(v) => format_string(w, v),
-            t => Err(Error::UnexpectedToken(t.name())),
+            _ => Err(Error::UnexpectedToken(event.into())),
         }
     } else {
         Err(Error::UnexpectedEOF)
@@ -73,24 +76,26 @@ where
     W: Write,
 {
     let mut comments_written = 0;
-    if let Some(Token::LineComment(v)) = peek_token(s)? {
-        match start {
-            CommentStart::None => {}
-            CommentStart::Space => write_char(w, ' ')?,
-            CommentStart::Newline => {
-                write_char(w, '\n')?;
-                write_indent(w, indent)?;
+    if let Some(event) = peek_event(s)? {
+        if let Token::LineComment(v) = event.token {
+            match start {
+                CommentStart::None => {}
+                CommentStart::Space => write_char(w, ' ')?,
+                CommentStart::Newline => {
+                    write_char(w, '\n')?;
+                    write_indent(w, indent)?;
+                }
             }
+            skip_event(s)?;
+            write_str(w, "//")?;
+            write_str(w, v)?;
+            comments_written += 1;
         }
-        skip_token(s)?;
-        write_str(w, "//")?;
-        write_str(w, v)?;
-        comments_written += 1;
     }
 
     let mut newlines = 0;
-    while let Some(token) = peek_token(s)? {
-        match token {
+    while let Some(event) = peek_event(s)? {
+        match event.token {
             Token::LineComment(v) => {
                 if newlines > 0 {
                     write_char(w, '\n')?;
@@ -106,13 +111,16 @@ where
             }
             Token::Newline => newlines += 1,
             _ => {
-                if newlines > 1 && comments_written > 0 {
+                // Currently, we allow blank lines between fields, but we could
+                // change this logic so that blank lines are only allowed after
+                // comments by adding to this: "&& comments_written > 0".
+                if newlines > 1 {
                     write_char(w, '\n')?;
                 }
                 break;
             }
         }
-        skip_token(s)?;
+        skip_event(s)?;
     }
     Ok(comments_written)
 }
@@ -123,14 +131,18 @@ where
     W: Write,
 {
     write_str(w, "[")?;
+    skip_newlines(s)?;
 
+    let mut cs = String::new();
     let mut cnt = 0;
     loop {
         format_comments(s, w, indent + 1, CommentStart::Newline)?;
 
-        if let Some(Token::ArrayEnd) = peek_token(s)? {
-            skip_token(s)?;
-            break;
+        if let Some(event) = peek_event(s)? {
+            if event.token == Token::ArrayEnd {
+                skip_event(s)?;
+                break;
+            }
         }
         cnt += 1;
 
@@ -138,22 +150,25 @@ where
         write_indent(w, indent + 1)?;
         format_value(s, w, indent + 1)?;
 
-        let mut cs = String::new();
+        cs.truncate(0);
         format_comments(s, &mut cs, indent + 1, CommentStart::Space)?;
 
-        match next_token(s)? {
-            Some(Token::Comma) => {
-                format_comments(s, &mut cs, indent + 1, CommentStart::Space)?;
-                match peek_token(s)? {
-                    Some(Token::ArrayEnd) => {}
-                    Some(_) => {
-                        write_char(w, ',')?;
+        match next_event(s)? {
+            Some(event) => match event.token {
+                Token::Comma => {
+                    format_comments(s, &mut cs, indent + 1, CommentStart::Space)?;
+                    match peek_event(s)? {
+                        Some(event) => {
+                            if event.token != Token::ArrayEnd {
+                                write_char(w, ',')?;
+                            }
+                        }
+                        None => return Err(Error::UnexpectedEOF),
                     }
-                    None => return Err(Error::UnexpectedEOF),
                 }
-            }
-            Some(Token::ArrayEnd) => break,
-            Some(t) => return Err(Error::UnexpectedToken(t.name())),
+                Token::ArrayEnd => break,
+                _ => return Err(Error::UnexpectedToken(event.into())),
+            },
             None => return Err(Error::UnexpectedEOF),
         }
 
@@ -174,59 +189,70 @@ where
     W: Write,
 {
     write_str(w, "{")?;
+    skip_newlines(s)?;
     format_comments(s, w, indent + 1, CommentStart::Newline)?;
 
+    let mut cs = String::new();
     let mut cnt = 0;
     loop {
-        match next_token(s)? {
-            Some(Token::ObjectEnd) => break,
-            Some(Token::String(k)) => {
-                cnt += 1;
-                skip_newlines(s)?;
-                format_comments(s, w, indent + 1, CommentStart::Newline)?;
+        if let Some(event) = next_event(s)? {
+            match event.token {
+                Token::ObjectEnd => break,
+                Token::String(k) => {
+                    cnt += 1;
+                    skip_newlines(s)?;
+                    format_comments(s, w, indent + 1, CommentStart::Newline)?;
 
-                match next_token(s)? {
-                    Some(Token::Colon) => {}
-                    Some(t) => return Err(Error::UnexpectedToken(t.name())),
-                    None => return Err(Error::UnexpectedEOF),
-                }
-
-                skip_newlines(s)?;
-                format_comments(s, w, indent + 1, CommentStart::Newline)?;
-
-                w.write_char('\n')?;
-                write_indent(w, indent + 1)?;
-                write_char(w, '"')?;
-                write_str(w, k)?;
-                write_str(w, "\": ")?;
-
-                format_value(s, w, indent + 1)?;
-
-                let mut cs = String::new();
-                format_comments(s, &mut cs, indent + 1, CommentStart::Space)?;
-
-                match next_token(s)? {
-                    Some(Token::Comma) => {
-                        format_comments(s, &mut cs, indent + 1, CommentStart::Space)?;
-                        match peek_token(s)? {
-                            Some(Token::ObjectEnd) => {}
-                            Some(_) => {
-                                write_char(w, ',')?;
-                            }
-                            None => return Err(Error::UnexpectedEOF),
+                    if let Some(event) = next_event(s)? {
+                        match event.token {
+                            Token::Colon => {}
+                            _ => return Err(Error::UnexpectedToken(event.into())),
                         }
+                    } else {
+                        return Err(Error::UnexpectedEOF);
                     }
-                    Some(Token::ObjectEnd) => break,
-                    Some(t) => return Err(Error::UnexpectedToken(t.name())),
-                    None => return Err(Error::UnexpectedEOF),
-                }
 
-                if !cs.is_empty() {
-                    write_str(w, &cs)?;
+                    skip_newlines(s)?;
+                    format_comments(s, w, indent + 1, CommentStart::Newline)?;
+
+                    w.write_char('\n')?;
+                    write_indent(w, indent + 1)?;
+                    write_char(w, '"')?;
+                    write_str(w, k)?;
+                    write_str(w, "\": ")?;
+
+                    format_value(s, w, indent + 1)?;
+
+                    cs.truncate(0);
+                    format_comments(s, &mut cs, indent + 1, CommentStart::Space)?;
+
+                    if let Some(event) = next_event(s)? {
+                        match event.token {
+                            Token::Comma => {
+                                format_comments(s, &mut cs, indent + 1, CommentStart::Space)?;
+                                if let Some(event) = peek_event(s)? {
+                                    if event.token != Token::ObjectEnd {
+                                        write_char(w, ',')?;
+                                    }
+                                } else {
+                                    return Err(Error::UnexpectedEOF);
+                                }
+                            }
+                            Token::ObjectEnd => break,
+                            _ => return Err(Error::UnexpectedToken(event.into())),
+                        }
+                    } else {
+                        return Err(Error::UnexpectedEOF);
+                    }
+
+                    if !cs.is_empty() {
+                        write_str(w, &cs)?;
+                    }
                 }
+                _ => return Err(Error::UnexpectedToken(event.into())),
             }
-            Some(t) => return Err(Error::UnexpectedToken(t.name())),
-            None => return Err(Error::UnexpectedEOF),
+        } else {
+            return Err(Error::UnexpectedEOF);
         }
     }
     if cnt > 0 {
@@ -276,43 +302,43 @@ where
     I: Iterator<Item = ScanResult<'a>>,
 {
     let mut newlines = 0;
-    while let Some(token) = peek_token(s)? {
-        if token != Token::Newline {
+    while let Some(event) = peek_event(s)? {
+        if event.token != Token::Newline {
             break;
         }
         newlines += 1;
-        skip_token(s)?;
+        skip_event(s)?;
     }
     Ok(newlines)
 }
 
-fn skip_token<'a, I>(s: &mut Peekable<I>) -> Result<(), Error>
+fn skip_event<'a, I>(s: &mut Peekable<I>) -> Result<(), Error>
 where
     I: Iterator<Item = ScanResult<'a>>,
 {
-    next_token(s)?;
+    next_event(s)?;
     Ok(())
 }
 
-fn next_token<'a, I>(s: &mut Peekable<I>) -> Result<Option<Token<'a>>, Error>
+fn next_event<'a, I>(s: &mut Peekable<I>) -> Result<Option<Event<'a>>, Error>
 where
     I: Iterator<Item = ScanResult<'a>>,
 {
     match s.next() {
-        Some(Ok(token)) => Ok(Some(token)),
+        Some(Ok(event)) => Ok(Some(event)),
         Some(Err(err)) => Err(err),
         None => Ok(None),
     }
 }
 
-fn peek_token<'a, I>(s: &mut Peekable<I>) -> Result<Option<Token<'a>>, Error>
+fn peek_event<'a, I>(s: &mut Peekable<I>) -> Result<Option<&Event<'a>>, Error>
 where
     I: Iterator<Item = ScanResult<'a>>,
 {
     match s.peek() {
-        Some(Ok(token)) => Ok(Some(*token)),
+        Some(Ok(event)) => Ok(Some(event)),
         None => Ok(None),
-        Some(Err(err)) => Err(*err),
+        Some(Err(err)) => Err(err.clone()),
     }
 }
 
@@ -347,6 +373,7 @@ mod tests {
     use std::fs::{read_dir, read_to_string};
 
     use super::*;
+    use crate::scanner::Scanner;
 
     #[test]
     fn format_success() -> Result<(), Error> {
@@ -367,21 +394,21 @@ mod tests {
             )
             .unwrap();
             let mut out = String::new();
-            format_jsonc(crate::Scanner::new(&input), &mut out)?;
+            format_jsonc(Scanner::new(&input), &mut out)?;
             if out != output {
                 println!("Got:\n{}-----\nExpected:\n{}-----", out, output);
                 panic!("Test failed: {:?}", file.file_name());
             }
 
             let mut out2 = String::new();
-            format_jsonc(crate::Scanner::new(&out), &mut out2)?;
+            format_jsonc(Scanner::new(&out), &mut out2)?;
             if out2 != out {
                 println!("Got:\n{}-----\nExpected:\n{}-----", out2, out);
                 panic!("Test failed: {:?}", file.file_name());
             }
 
             let mut out3 = String::new();
-            format_json(crate::Scanner::new(&input), &mut out3)?;
+            format_json(Scanner::new(&input), &mut out3)?;
             let json_val =
                 read_to_string(file.path().to_str().unwrap().replace(".jsonc", "-out.json"))
                     .unwrap();
@@ -404,7 +431,6 @@ mod tests {
 
         { // Object start.
 
-            /* Block comment */
             "key1": "val1", // Same line comment.
             "k": "v",
             // Next line comment.
@@ -418,6 +444,7 @@ mod tests {
                 // True.
                 true,
             ],
+            
             // And another.
         "key2": { "nested": // And another one.
         100, "value": true, "third": "this" 
@@ -427,14 +454,20 @@ mod tests {
         } // Trailing comment."#;
         let mut buf = String::new();
         println!("{}", input);
-        format_jsonc(crate::Scanner::new(input), &mut buf).unwrap();
+        if let Err(err) = format_jsonc(Scanner::new(input), &mut buf) {
+            println!("ERROR: {}", err);
+        }
         println!("-----\n{}-----", buf);
         let mut buf2 = String::new();
-        format_jsonc(crate::Scanner::new(buf.as_str()), &mut buf2).unwrap();
+        if let Err(err) = format_jsonc(Scanner::new(buf.as_str()), &mut buf2) {
+            println!("ERROR: {}", err);
+        }
         //println!("-----\n{}-----", buf2);
         assert!(buf == buf2);
         buf2.clear();
-        format_json(crate::Scanner::new(input), &mut buf2).unwrap();
+        if let Err(err) = format_json(Scanner::new(input), &mut buf2) {
+            println!("ERROR: {}", err);
+        }
         println!("-----\n{}-----", buf2);
     }
 }

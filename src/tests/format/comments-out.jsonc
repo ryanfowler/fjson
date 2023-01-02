@@ -8,8 +8,10 @@
 
   // Before colon.
   "k2": "v2",
+
   // Before value.
   "k3": "v3",
+
   "k4": "v4", // Before comma.
 
   "k5": "v5",
