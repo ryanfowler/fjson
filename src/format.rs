@@ -34,6 +34,9 @@ where
     }
     format_value(&mut s, w, 0)?;
     format_comments(&mut s, w, 0, CommentStart::Space)?;
+    if let Some(event) = next_event(&mut s)? {
+        return Err(Error::UnexpectedToken(event.into()));
+    }
     write_char(w, '\n')?;
     Ok(())
 }
