@@ -52,65 +52,45 @@ impl<'a> Scanner<'a> {
 
     fn parse_value(&mut self) -> Option<ScanResult<'a>> {
         self.skip_whitespace();
-        if let Some(&(i, c)) = self.peek_char() {
+        if let Some((i, c)) = self.next_char() {
+            let start = self.current_idx;
             match c {
-                '\n' => {
-                    self.skip_char();
-                    Some(Ok(Event {
-                        token: Token::Newline,
-                        range: self.current_idx..(self.current_idx + 1),
-                    }))
-                }
-                '{' => {
-                    self.skip_char();
-                    Some(Ok(Event {
-                        token: Token::ObjectStart,
-                        range: self.current_idx..(self.current_idx + 1),
-                    }))
-                }
-                '}' => {
-                    self.skip_char();
-                    Some(Ok(Event {
-                        token: Token::ObjectEnd,
-                        range: self.current_idx..(self.current_idx + 1),
-                    }))
-                }
-                '[' => {
-                    self.skip_char();
-                    Some(Ok(Event {
-                        token: Token::ArrayStart,
-                        range: self.current_idx..(self.current_idx + 1),
-                    }))
-                }
-                ']' => {
-                    self.skip_char();
-                    Some(Ok(Event {
-                        token: Token::ArrayEnd,
-                        range: self.current_idx..(self.current_idx + 1),
-                    }))
-                }
-                ',' => {
-                    self.skip_char();
-                    Some(Ok(Event {
-                        token: Token::Comma,
-                        range: self.current_idx..(self.current_idx + 1),
-                    }))
-                }
-                ':' => {
-                    self.skip_char();
-                    Some(Ok(Event {
-                        token: Token::Colon,
-                        range: self.current_idx..(self.current_idx + 1),
-                    }))
-                }
-                'n' => Some(self.parse_null()),
-                't' => Some(self.parse_bool_true()),
-                'f' => Some(self.parse_bool_false()),
-                '/' => Some(self.parse_comment()),
-                '"' => Some(self.parse_string()),
+                '\n' => Some(Ok(Event {
+                    token: Token::Newline,
+                    range: start..(start + 1),
+                })),
+                '{' => Some(Ok(Event {
+                    token: Token::ObjectStart,
+                    range: start..(start + 1),
+                })),
+                '}' => Some(Ok(Event {
+                    token: Token::ObjectEnd,
+                    range: start..(start + 1),
+                })),
+                '[' => Some(Ok(Event {
+                    token: Token::ArrayStart,
+                    range: start..(start + 1),
+                })),
+                ']' => Some(Ok(Event {
+                    token: Token::ArrayEnd,
+                    range: start..(start + 1),
+                })),
+                ',' => Some(Ok(Event {
+                    token: Token::Comma,
+                    range: start..(start + 1),
+                })),
+                ':' => Some(Ok(Event {
+                    token: Token::Colon,
+                    range: start..(start + 1),
+                })),
+                'n' => Some(self.parse_null(start)),
+                't' => Some(self.parse_bool_true(start)),
+                'f' => Some(self.parse_bool_false(start)),
+                '/' => Some(self.parse_comment(start)),
+                '"' => Some(self.parse_string(start)),
                 c => {
                     if c.is_numeric() || c == '-' {
-                        Some(self.parse_number())
+                        Some(self.parse_number(start))
                     } else {
                         Some(Err(Error::UnexpectedCharacter((i, c))))
                     }
@@ -121,22 +101,9 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    fn parse_number(&mut self) -> ScanResult<'a> {
+    fn parse_number(&mut self, start: usize) -> ScanResult<'a> {
         // TODO(ryanfowler): Parse and validate a number properly.
-        let start = self.current_idx + 1;
-
-        match self.next_char() {
-            None => {
-                return Err(Error::UnexpectedEOF);
-            }
-            Some((i, c)) => {
-                if c != '-' && !c.is_numeric() {
-                    return Err(Error::UnexpectedCharacter((i, c)));
-                }
-            }
-        }
-
-        let mut end = self.current_idx;
+        let mut end = start + 1;
         while let Some(&(i, c)) = self.peek_char() {
             end = i;
             if c.is_numeric() || c == 'e' || c == 'E' || c == '+' {
@@ -153,14 +120,7 @@ impl<'a> Scanner<'a> {
         })
     }
 
-    fn parse_string(&mut self) -> ScanResult<'a> {
-        match self.next_char() {
-            Some((_, '"')) => {}
-            Some((i, c)) => return Err(Error::UnexpectedCharacter((i, c))),
-            None => return Err(Error::UnexpectedEOF),
-        }
-
-        let start = self.current_idx;
+    fn parse_string(&mut self, start: usize) -> ScanResult<'a> {
         while let Some((_, c)) = self.next_char() {
             match c {
                 '\\' => match self.next_char() {
@@ -195,21 +155,16 @@ impl<'a> Scanner<'a> {
         Err(Error::UnexpectedEOF)
     }
 
-    fn parse_comment(&mut self) -> ScanResult<'a> {
+    fn parse_comment(&mut self, start: usize) -> ScanResult<'a> {
         match self.next_char() {
-            Some((_, '/')) => match self.next_char() {
-                Some((_, '/')) => self.parse_line_comment(),
-                Some((_, '*')) => self.parse_block_comment(),
-                Some(v) => Err(Error::UnexpectedCharacter(v)),
-                None => Err(Error::UnexpectedEOF),
-            },
+            Some((_, '/')) => self.parse_line_comment(start),
+            Some((_, '*')) => self.parse_block_comment(start),
             Some(v) => Err(Error::UnexpectedCharacter(v)),
             None => Err(Error::UnexpectedEOF),
         }
     }
 
-    fn parse_line_comment(&mut self) -> ScanResult<'a> {
-        let start = self.current_idx - 1;
+    fn parse_line_comment(&mut self, start: usize) -> ScanResult<'a> {
         let mut end = start + 2;
         while let Some(&(i, c)) = self.peek_char() {
             end = i;
@@ -233,8 +188,7 @@ impl<'a> Scanner<'a> {
         })
     }
 
-    fn parse_block_comment(&mut self) -> ScanResult<'a> {
-        let start = self.current_idx - 1;
+    fn parse_block_comment(&mut self, start: usize) -> ScanResult<'a> {
         while let Some((_, c)) = self.next_char() {
             if c == '*' {
                 if let Some(&(i, '/')) = self.peek_char() {
@@ -249,9 +203,8 @@ impl<'a> Scanner<'a> {
         Err(Error::UnexpectedEOF)
     }
 
-    fn parse_null(&mut self) -> ScanResult<'a> {
-        let start = self.current_idx;
-        if self.next_chars_equal("null") {
+    fn parse_null(&mut self, start: usize) -> ScanResult<'a> {
+        if self.next_chars_equal("ull") {
             Ok(Event {
                 token: Token::Null,
                 range: start..(start + 4),
@@ -261,9 +214,8 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    fn parse_bool_true(&mut self) -> ScanResult<'a> {
-        let start = self.current_idx;
-        if self.next_chars_equal("true") {
+    fn parse_bool_true(&mut self, start: usize) -> ScanResult<'a> {
+        if self.next_chars_equal("rue") {
             Ok(Event {
                 token: Token::Bool(true),
                 range: start..(start + 4),
@@ -273,12 +225,11 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    fn parse_bool_false(&mut self) -> ScanResult<'a> {
-        let start = self.current_idx;
-        if self.next_chars_equal("false") {
+    fn parse_bool_false(&mut self, start: usize) -> ScanResult<'a> {
+        if self.next_chars_equal("alse") {
             Ok(Event {
                 token: Token::Bool(false),
-                range: start..(start + 4),
+                range: start..(start + 5),
             })
         } else {
             Err(Error::UnexpectedCharacter((start, 'f')))

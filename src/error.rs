@@ -29,9 +29,7 @@ impl fmt::Display for Error {
                 )
             }
             Self::UnexpectedEOF => f.write_str("unexpected end of file"),
-            Self::Write(err) => {
-                write!(f, "writing: {}", err)
-            }
+            Self::Write(err) => write!(f, "writing: {}", err),
         }
     }
 }
