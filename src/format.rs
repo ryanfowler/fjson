@@ -13,7 +13,7 @@ where
     let iter = s.filter(|res| {
         if let Ok(event) = res {
             match event.token {
-                Token::LineComment(_) | Token::BlockComment(_) /* | Token::Newline */ => return false,
+                Token::LineComment(_) | Token::BlockComment(_) | Token::Newline => return false,
                 _ => {}
             }
         }
@@ -109,11 +109,12 @@ where
                 newlines = 0;
                 comments_written += 1;
             }
+            Token::BlockComment(_) => todo!(),
             Token::Newline => newlines += 1,
             _ => {
-                // Currently, we allow blank lines between fields, but we could
+                // Currently we allow blank lines between fields, but we could
                 // change this logic so that blank lines are only allowed after
-                // comments by adding to this: "&& comments_written > 0".
+                // comments by adding the following: "&& comments_written > 0".
                 if newlines > 1 {
                     write_char(w, '\n')?;
                 }
