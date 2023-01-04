@@ -51,7 +51,14 @@ pub enum Comment<'a> {
 }
 
 pub fn parse(input: &str) -> Result<Root, Error> {
-    let mut s = Scanner::new(input).peekable();
+    parse_iter(Scanner::new(input))
+}
+
+pub fn parse_iter<'a, I>(iter: I) -> Result<Root<'a>, Error>
+where
+    I: Iterator<Item = ScanResult<'a>>,
+{
+    let mut s = iter.peekable();
     parse_newlines(&mut s)?;
     let mut meta_above = Vec::new();
     while let Some(meta) = parse_metadata(&mut s)? {
@@ -62,6 +69,9 @@ pub fn parse(input: &str) -> Result<Root, Error> {
     let mut meta_below = Vec::new();
     while let Some(meta) = parse_metadata(&mut s)? {
         meta_below.push(meta);
+    }
+    if let Some(event) = next_event(&mut s)? {
+        return Err(Error::UnexpectedToken(event.into()));
     }
     if let Some(Metadata::Newline) = meta_below.last() {
         meta_below.pop();
