@@ -46,6 +46,12 @@ impl std::convert::From<Event<'_>> for (Range<usize>, TokenType) {
     }
 }
 
+impl std::convert::From<&Event<'_>> for (Range<usize>, TokenType) {
+    fn from(value: &Event<'_>) -> Self {
+        (value.range.clone(), TokenType::from(value.token))
+    }
+}
+
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum TokenType {
     Newline,
