@@ -15,7 +15,7 @@ pub fn write_jsonc<W: Write>(w: &mut W, root: &Root) -> Result<(), Error> {
         ctx.write_metadata(meta)?;
         ctx.write_newline()?;
     }
-    ctx.write_value(&root.value.token, 0)?;
+    ctx.write_value(&root.value.token, 0, false)?;
     ctx.write_comments(&root.value.comments)?;
     for meta in &root.meta_below {
         ctx.write_metadata(meta)?;
@@ -30,10 +30,15 @@ struct Context<'a, W: Write> {
 }
 
 impl<'a, W: Write> Context<'a, W> {
-    fn write_value(&mut self, value: &ValueToken, indent: usize) -> Result<(), Error> {
+    fn write_value(
+        &mut self,
+        value: &ValueToken,
+        indent: usize,
+        allow_sameline: bool,
+    ) -> Result<(), Error> {
         match value {
-            ValueToken::Object(vals) => self.write_json_object(vals, indent),
-            ValueToken::Array(vals) => self.write_json_array(vals, indent),
+            ValueToken::Object(vals) => self.write_json_object(vals, indent, allow_sameline),
+            ValueToken::Array(vals) => self.write_json_array(vals, indent, allow_sameline),
             ValueToken::String(v) => self.write_json_string(v),
             ValueToken::Number(v) => self.write_str(v),
             ValueToken::Bool(v) => self.write_json_bool(*v),
@@ -41,9 +46,15 @@ impl<'a, W: Write> Context<'a, W> {
         }
     }
 
-    fn write_json_object(&mut self, vals: &[ObjectValue], indent: usize) -> Result<(), Error> {
+    fn write_json_object(
+        &mut self,
+        vals: &[ObjectValue],
+        indent: usize,
+        allow_sameline: bool,
+    ) -> Result<(), Error> {
         let length = vals.len();
-        let same_line = LINE_LENGTH > self.written()
+        let same_line = allow_sameline
+            && LINE_LENGTH > self.written()
             && can_fit_object(vals, LINE_LENGTH - self.written()).is_some();
 
         self.write_char('{')?;
@@ -58,7 +69,7 @@ impl<'a, W: Write> Context<'a, W> {
                 ObjectValue::KeyVal(k, v) => {
                     self.write_json_string(k)?;
                     self.write_str(": ")?;
-                    self.write_value(&v.token, indent + 1)?;
+                    self.write_value(&v.token, indent + 1, true)?;
                     if i < length - 1 {
                         self.write_char(',')?;
                     }
@@ -77,9 +88,15 @@ impl<'a, W: Write> Context<'a, W> {
         }
         self.write_char('}')
     }
-    fn write_json_array(&mut self, vals: &[ArrayValue], indent: usize) -> Result<(), Error> {
+    fn write_json_array(
+        &mut self,
+        vals: &[ArrayValue],
+        indent: usize,
+        allow_sameline: bool,
+    ) -> Result<(), Error> {
         let length = vals.len();
-        let same_line = LINE_LENGTH > self.written()
+        let same_line = allow_sameline
+            && LINE_LENGTH > self.written()
             && can_fit_array(vals, LINE_LENGTH - self.written()).is_some();
 
         self.write_char('[')?;
@@ -94,7 +111,7 @@ impl<'a, W: Write> Context<'a, W> {
             }
             match val {
                 ArrayValue::ArrayVal(v) => {
-                    self.write_value(&v.token, indent + 1)?;
+                    self.write_value(&v.token, indent + 1, true)?;
                     if i < length - 1 {
                         self.write_char(',')?;
                     }
@@ -215,6 +232,10 @@ fn can_fit_value(val: &ValueToken, space: usize) -> Option<usize> {
 
 fn can_fit_object(vals: &[ObjectValue], space: usize) -> Option<usize> {
     let num_vals = vals.len() as i64;
+    if num_vals > 1 {
+        return None;
+    }
+
     let mut remaining = (space as i64) - 2; // For object start/close.
     if !vals.is_empty() {
         // Object padding + (key quotes + colon + padding) * values + (comma + padding) * values - 1.
@@ -233,6 +254,11 @@ fn can_fit_object(vals: &[ObjectValue], space: usize) -> Option<usize> {
                 remaining -= k.len() as i64;
                 if remaining < 0 {
                     return None;
+                }
+                match v.token {
+                    ValueToken::Array(_) => return None,
+                    ValueToken::Object(_) => return None,
+                    _ => {}
                 }
                 match can_fit_value(&v.token, remaining as usize) {
                     None => return None,
@@ -253,6 +279,10 @@ fn can_fit_object(vals: &[ObjectValue], space: usize) -> Option<usize> {
 
 fn can_fit_array(vals: &[ArrayValue], space: usize) -> Option<usize> {
     let num_vals = vals.len() as i64;
+    if num_vals > 4 {
+        return None;
+    }
+
     let mut remaining = (space as i64) - 2; // For array start/close.
     if !vals.is_empty() {
         // (comma + padding) * values - 1.
@@ -267,6 +297,11 @@ fn can_fit_array(vals: &[ArrayValue], space: usize) -> Option<usize> {
             ArrayValue::ArrayVal(v) => {
                 if !v.comments.is_empty() {
                     return None;
+                }
+                match v.token {
+                    ValueToken::Array(_) => return None,
+                    ValueToken::Object(_) => return None,
+                    _ => {}
                 }
                 match can_fit_value(&v.token, remaining as usize) {
                     None => return None,

@@ -59,7 +59,7 @@ mod tests {
         100, "value": true, "third": "this"
 
         // Weird comment before comma.
-        , "is": "a", "v":{"another" :"object",}  },
+        , "is": "a", "v":{"another" :"object", "2":2,}  },
         } // Trailing comment."#;
         println!("{}", input);
         let jsonc = format_jsonc(input).unwrap();
