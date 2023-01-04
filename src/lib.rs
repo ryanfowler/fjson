@@ -4,6 +4,7 @@ pub mod format;
 pub mod scanner;
 
 pub use error::Error;
+use scanner::Scanner;
 
 pub fn format_jsonc(input: &str) -> Result<String, Error> {
     let root = ast::parse(input)?;
@@ -13,14 +14,14 @@ pub fn format_jsonc(input: &str) -> Result<String, Error> {
 }
 
 pub fn format_json(input: &str) -> Result<String, Error> {
-    let mut root = ast::parse(input)?;
+    let root = ast::parse_iter(Scanner::new(input).json())?;
     let mut out = String::with_capacity(input.len() + 128);
-    format::write_json(&mut out, &mut root)?;
+    format::write_jsonc(&mut out, &root)?;
     Ok(out)
 }
 
 pub fn format_json_compact(input: &str) -> Result<String, Error> {
-    let root = ast::parse(input)?;
+    let root = ast::parse_iter(Scanner::new(input).json())?;
     let mut out = String::with_capacity(input.len());
     format::write_json_compact(&mut out, &root)?;
     Ok(out)

@@ -1,13 +1,6 @@
 use std::fmt::{Error, Write};
 
-use crate::ast::{
-    strip_metadata, ArrayValue, Comment, Metadata, ObjectValue, Root, Value, ValueToken,
-};
-
-pub fn write_json<W: Write>(w: &mut W, root: &mut Root) -> Result<(), Error> {
-    strip_metadata(root);
-    write_jsonc(w, root)
-}
+use crate::ast::{ArrayValue, Comment, Metadata, ObjectValue, Root, Value, ValueToken};
 
 pub fn write_jsonc<W: Write>(w: &mut W, root: &Root) -> Result<(), Error> {
     let mut ctx = Context { w, written: 0 };
@@ -238,7 +231,7 @@ fn can_fit_object(vals: &[ObjectValue], space: usize) -> Option<usize> {
 
     let mut remaining = (space as i64) - 2; // For object start/close.
     if !vals.is_empty() {
-        // Object padding + (key quotes + colon + padding) * values + (comma + padding) * values - 1.
+        // Object padding + (key quotes + colon + padding) * values + (comma + padding) * (values - 1).
         remaining -= 2 + 4 * num_vals + 2 * (num_vals - 1);
     }
     if remaining < 0 {
@@ -285,7 +278,7 @@ fn can_fit_array(vals: &[ArrayValue], space: usize) -> Option<usize> {
 
     let mut remaining = (space as i64) - 2; // For array start/close.
     if !vals.is_empty() {
-        // (comma + padding) * values - 1.
+        // (comma + padding) * (values - 1).
         remaining -= 2 * (num_vals - 1);
     }
     if remaining < 0 {
@@ -324,7 +317,7 @@ pub fn write_json_compact<W: Write>(w: &mut W, root: &Root) -> Result<(), Error>
     write_json_value_compact(w, &root.value)
 }
 
-pub fn write_json_value_compact<W: Write>(w: &mut W, value: &Value) -> Result<(), Error> {
+fn write_json_value_compact<W: Write>(w: &mut W, value: &Value) -> Result<(), Error> {
     match &value.token {
         ValueToken::Object(vals) => {
             w.write_char('{')?;
@@ -376,6 +369,7 @@ pub fn write_json_value_compact<W: Write>(w: &mut W, value: &Value) -> Result<()
     }
     Ok(())
 }
+
 /*
 #[cfg(test)]
 mod tests {
