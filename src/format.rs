@@ -21,7 +21,7 @@ pub fn write_jsonc<W: Write>(w: &mut W, root: &Root) -> Result<(), Error> {
         ctx.write_metadata(meta)?;
         ctx.write_newline()?;
     }
-    Ok(())
+    ctx.write_newline()
 }
 
 struct Context<'a, W: Write> {

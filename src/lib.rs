@@ -63,10 +63,10 @@ mod tests {
         } // Trailing comment."#;
         println!("{}", input);
         let jsonc = format_jsonc(input).unwrap();
-        println!("-----jsonc-----\n{}", jsonc);
+        println!("-----jsonc-----\n{}-----", jsonc);
         let json = format_json(input).unwrap();
-        println!("-----json-----\n{}", json);
+        println!("-----json-----\n{}-----", json);
         let json_compact = format_json_compact(input).unwrap();
-        println!("-----json_compact-----\n{}", json_compact);
+        println!("-----json_compact-----\n{}-----", json_compact);
     }
 }
