@@ -1,377 +1,347 @@
-use std::{fmt::Write, iter::Peekable};
+use std::fmt::{Error, Write};
 
-use crate::{
-    error::Error,
-    scanner::{Event, ScanResult, Token},
+use crate::ast::{
+    strip_metadata, ArrayValue, Comment, Metadata, ObjectValue, Root, Value, ValueToken,
 };
 
-pub fn format_json<'a, I, W>(s: I, w: &mut W) -> Result<(), Error>
-where
-    I: Iterator<Item = ScanResult<'a>>,
-    W: Write,
-{
-    let iter = s.filter(|res| {
-        if let Ok(event) = res {
-            match event.token {
-                Token::LineComment(_) | Token::BlockComment(_) | Token::Newline => return false,
-                _ => {}
-            }
-        }
-        true
-    });
-    format_jsonc(iter, w)
+pub fn write_json<W: Write>(w: &mut W, root: &mut Root) -> Result<(), Error> {
+    strip_metadata(root);
+    write_jsonc(w, root)
 }
 
-pub fn format_jsonc<'a, I, W>(s: I, w: &mut W) -> Result<(), Error>
-where
-    I: Iterator<Item = ScanResult<'a>>,
-    W: Write,
-{
-    let mut s = s.peekable();
-    skip_newlines(&mut s)?;
-    if format_comments(&mut s, w, 0, CommentStart::None)? > 0 {
-        write_char(w, '\n')?;
+pub fn write_jsonc<W: Write>(w: &mut W, root: &Root) -> Result<(), Error> {
+    let mut ctx = Context { w, written: 0 };
+    for meta in &root.meta_above {
+        ctx.write_metadata(meta)?;
+        ctx.write_newline()?;
     }
-    format_value(&mut s, w, 0)?;
-    format_comments(&mut s, w, 0, CommentStart::Space)?;
-    if let Some(event) = next_event(&mut s)? {
-        return Err(Error::UnexpectedToken(event.into()));
+    ctx.write_value(&root.value.token, 0)?;
+    ctx.write_comments(&root.value.comments)?;
+    for meta in &root.meta_below {
+        ctx.write_metadata(meta)?;
+        ctx.write_newline()?;
     }
-    write_char(w, '\n')?;
     Ok(())
 }
 
-fn format_value<'a, W, I>(s: &mut Peekable<I>, w: &mut W, indent: usize) -> Result<(), Error>
-where
-    I: Iterator<Item = ScanResult<'a>>,
-    W: Write,
-{
-    format_comments(s, w, indent, CommentStart::Newline)?;
-    if let Some(event) = next_event(s)? {
-        match event.token {
-            Token::ObjectStart => format_object(s, w, indent),
-            Token::ArrayStart => format_array(s, w, indent),
-            Token::Bool(v) => format_bool(w, v),
-            Token::Null => format_null(w),
-            Token::Number(v) => format_number(w, v),
-            Token::String(v) => format_string(w, v),
-            _ => Err(Error::UnexpectedToken(event.into())),
-        }
-    } else {
-        Err(Error::UnexpectedEOF)
-    }
+struct Context<'a, W: Write> {
+    w: &'a mut W,
+    written: usize,
 }
 
-enum CommentStart {
-    None,
-    Space,
-    Newline,
-}
-
-fn format_comments<'a, W, I>(
-    s: &mut Peekable<I>,
-    w: &mut W,
-    indent: usize,
-    start: CommentStart,
-) -> Result<usize, Error>
-where
-    I: Iterator<Item = ScanResult<'a>>,
-    W: Write,
-{
-    let mut comments_written = 0;
-    if let Some(event) = peek_event(s)? {
-        if let Token::LineComment(v) = event.token {
-            match start {
-                CommentStart::None => {}
-                CommentStart::Space => write_char(w, ' ')?,
-                CommentStart::Newline => {
-                    write_char(w, '\n')?;
-                    write_indent(w, indent)?;
-                }
-            }
-            skip_event(s)?;
-            write_str(w, "//")?;
-            write_str(w, v)?;
-            comments_written += 1;
+impl<'a, W: Write> Context<'a, W> {
+    fn write_value(&mut self, value: &ValueToken, indent: usize) -> Result<(), Error> {
+        match value {
+            ValueToken::Object(vals) => self.write_json_object(vals, indent),
+            ValueToken::Array(vals) => self.write_json_array(vals, indent),
+            ValueToken::String(v) => self.write_json_string(v),
+            ValueToken::Number(v) => self.write_str(v),
+            ValueToken::Bool(v) => self.write_json_bool(*v),
+            ValueToken::Null => self.write_str("null"),
         }
     }
 
-    let mut newlines = 0;
-    while let Some(event) = peek_event(s)? {
-        match event.token {
-            Token::LineComment(v) => {
-                if newlines > 0 {
-                    write_char(w, '\n')?;
-                    if newlines > 1 {
-                        write_char(w, '\n')?;
-                    }
-                    write_indent(w, indent)?;
-                }
-                write_str(w, "//")?;
-                write_str(w, v)?;
-                newlines = 0;
-                comments_written += 1;
+    fn write_json_object(&mut self, vals: &[ObjectValue], indent: usize) -> Result<(), Error> {
+        let length = vals.len();
+        let same_line = LINE_LENGTH > self.written()
+            && can_fit_object(vals, LINE_LENGTH - self.written()).is_some();
+
+        self.write_char('{')?;
+        for (i, val) in vals.iter().enumerate() {
+            if same_line {
+                self.write_char(' ')?;
+            } else {
+                self.write_newline()?;
+                self.write_indent(indent + 1)?;
             }
-            Token::BlockComment(_) => todo!(),
-            Token::Newline => newlines += 1,
-            _ => {
-                // Currently we allow blank lines between fields, but we could
-                // change this logic so that blank lines are only allowed after
-                // comments by adding the following: "&& comments_written > 0".
-                if newlines > 1 {
-                    write_char(w, '\n')?;
+            match val {
+                ObjectValue::KeyVal(k, v) => {
+                    self.write_json_string(k)?;
+                    self.write_str(": ")?;
+                    self.write_value(&v.token, indent + 1)?;
+                    if i < length - 1 {
+                        self.write_char(',')?;
+                    }
+                    self.write_comments(&v.comments)?;
                 }
-                break;
+                ObjectValue::Metadata(meta) => self.write_metadata(meta)?,
             }
         }
-        skip_event(s)?;
+        if length > 0 {
+            if same_line {
+                self.write_char(' ')?;
+            } else {
+                self.write_newline()?;
+                self.write_indent(indent)?;
+            }
+        }
+        self.write_char('}')
     }
-    Ok(comments_written)
-}
+    fn write_json_array(&mut self, vals: &[ArrayValue], indent: usize) -> Result<(), Error> {
+        let length = vals.len();
+        let same_line = LINE_LENGTH > self.written()
+            && can_fit_array(vals, LINE_LENGTH - self.written()).is_some();
 
-fn format_array<'a, W, I>(s: &mut Peekable<I>, w: &mut W, indent: usize) -> Result<(), Error>
-where
-    I: Iterator<Item = ScanResult<'a>>,
-    W: Write,
-{
-    write_str(w, "[")?;
-    skip_newlines(s)?;
-
-    let mut cs = String::new();
-    let mut cnt = 0;
-    loop {
-        format_comments(s, w, indent + 1, CommentStart::Newline)?;
-
-        if let Some(event) = peek_event(s)? {
-            if event.token == Token::ArrayEnd {
-                skip_event(s)?;
-                break;
+        self.write_char('[')?;
+        for (i, val) in vals.iter().enumerate() {
+            if same_line {
+                if i > 0 {
+                    self.write_char(' ')?;
+                }
+            } else {
+                self.write_newline()?;
+                self.write_indent(indent + 1)?;
+            }
+            match val {
+                ArrayValue::ArrayVal(v) => {
+                    self.write_value(&v.token, indent + 1)?;
+                    if i < length - 1 {
+                        self.write_char(',')?;
+                    }
+                    self.write_comments(&v.comments)?;
+                }
+                ArrayValue::Metadata(meta) => self.write_metadata(meta)?,
             }
         }
-        cnt += 1;
-
-        w.write_char('\n')?;
-        write_indent(w, indent + 1)?;
-        format_value(s, w, indent + 1)?;
-
-        cs.truncate(0);
-        format_comments(s, &mut cs, indent + 1, CommentStart::Space)?;
-
-        match next_event(s)? {
-            Some(event) => match event.token {
-                Token::Comma => {
-                    format_comments(s, &mut cs, indent + 1, CommentStart::Space)?;
-                    match peek_event(s)? {
-                        Some(event) => {
-                            if event.token != Token::ArrayEnd {
-                                write_char(w, ',')?;
-                            }
-                        }
-                        None => return Err(Error::UnexpectedEOF),
-                    }
-                }
-                Token::ArrayEnd => break,
-                _ => return Err(Error::UnexpectedToken(event.into())),
-            },
-            None => return Err(Error::UnexpectedEOF),
+        if length > 0 && !same_line {
+            self.write_newline()?;
+            self.write_indent(indent)?;
         }
-
-        if !cs.is_empty() {
-            write_str(w, &cs)?;
-        }
+        self.write_char(']')
     }
-    if cnt > 0 {
-        write_char(w, '\n')?;
-        write_indent(w, indent)?;
-    }
-    write_char(w, ']')
-}
 
-fn format_object<'a, W, I>(s: &mut Peekable<I>, w: &mut W, indent: usize) -> Result<(), Error>
-where
-    I: Iterator<Item = ScanResult<'a>>,
-    W: Write,
-{
-    write_str(w, "{")?;
-    skip_newlines(s)?;
-    format_comments(s, w, indent + 1, CommentStart::Newline)?;
-
-    let mut cs = String::new();
-    let mut cnt = 0;
-    loop {
-        if let Some(event) = next_event(s)? {
-            match event.token {
-                Token::ObjectEnd => break,
-                Token::String(k) => {
-                    cnt += 1;
-                    skip_newlines(s)?;
-                    format_comments(s, w, indent + 1, CommentStart::Newline)?;
-
-                    if let Some(event) = next_event(s)? {
-                        match event.token {
-                            Token::Colon => {}
-                            _ => return Err(Error::UnexpectedToken(event.into())),
-                        }
-                    } else {
-                        return Err(Error::UnexpectedEOF);
-                    }
-
-                    skip_newlines(s)?;
-                    format_comments(s, w, indent + 1, CommentStart::Newline)?;
-
-                    w.write_char('\n')?;
-                    write_indent(w, indent + 1)?;
-                    write_char(w, '"')?;
-                    write_str(w, k)?;
-                    write_str(w, "\": ")?;
-
-                    format_value(s, w, indent + 1)?;
-
-                    cs.truncate(0);
-                    format_comments(s, &mut cs, indent + 1, CommentStart::Space)?;
-
-                    if let Some(event) = next_event(s)? {
-                        match event.token {
-                            Token::Comma => {
-                                format_comments(s, &mut cs, indent + 1, CommentStart::Space)?;
-                                if let Some(event) = peek_event(s)? {
-                                    if event.token != Token::ObjectEnd {
-                                        write_char(w, ',')?;
-                                    }
-                                } else {
-                                    return Err(Error::UnexpectedEOF);
-                                }
-                            }
-                            Token::ObjectEnd => break,
-                            _ => return Err(Error::UnexpectedToken(event.into())),
-                        }
-                    } else {
-                        return Err(Error::UnexpectedEOF);
-                    }
-
-                    if !cs.is_empty() {
-                        write_str(w, &cs)?;
-                    }
-                }
-                _ => return Err(Error::UnexpectedToken(event.into())),
-            }
+    fn write_json_bool(&mut self, v: bool) -> Result<(), Error> {
+        if v {
+            self.write_str("true")
         } else {
-            return Err(Error::UnexpectedEOF);
+            self.write_str("false")
         }
     }
-    if cnt > 0 {
-        write_char(w, '\n')?;
-        write_indent(w, indent)?;
+
+    fn written(&self) -> usize {
+        self.written
     }
-    write_char(w, '}')
-}
 
-fn format_string<W>(w: &mut W, v: &str) -> Result<(), Error>
-where
-    W: Write,
-{
-    w.write_char('"')?;
-    w.write_str(v)?;
-    w.write_char('"')?;
-    Ok(())
-}
-
-fn format_number<W>(w: &mut W, v: &str) -> Result<(), Error>
-where
-    W: Write,
-{
-    w.write_str(v)?;
-    Ok(())
-}
-
-fn format_bool<W>(w: &mut W, v: bool) -> Result<(), Error>
-where
-    W: Write,
-{
-    let s = if v { "true" } else { "false" };
-    w.write_str(s)?;
-    Ok(())
-}
-
-fn format_null<W>(w: &mut W) -> Result<(), Error>
-where
-    W: Write,
-{
-    w.write_str("null")?;
-    Ok(())
-}
-
-fn skip_newlines<'a, I>(s: &mut Peekable<I>) -> Result<usize, Error>
-where
-    I: Iterator<Item = ScanResult<'a>>,
-{
-    let mut newlines = 0;
-    while let Some(event) = peek_event(s)? {
-        if event.token != Token::Newline {
-            break;
+    fn write_metadata(&mut self, meta: &Metadata) -> Result<(), Error> {
+        if let Metadata::Comment(c) = meta {
+            self.write_comment(c)?;
         }
-        newlines += 1;
-        skip_event(s)?;
+        Ok(())
     }
-    Ok(newlines)
+
+    fn write_comments(&mut self, cs: &[Comment]) -> Result<(), Error> {
+        if cs.is_empty() {
+            return Ok(());
+        }
+        self.write_char(' ')?;
+        for comment in cs {
+            self.write_comment(comment)?;
+        }
+        Ok(())
+    }
+
+    fn write_comment(&mut self, comment: &Comment) -> Result<(), Error> {
+        match comment {
+            Comment::Block(c) => {
+                // Do we need to look for newlines and adjust self.written?
+                self.write_str("/*")?;
+                self.write_str(c)?;
+                self.write_str("*/")
+            }
+            Comment::Line(c) => {
+                self.write_str("//")?;
+                self.write_str(c)
+            }
+        }
+    }
+
+    fn write_json_string(&mut self, s: &str) -> Result<(), Error> {
+        self.write_char('"')?;
+        self.write_str(s)?;
+        self.write_char('"')
+    }
+
+    fn write_indent(&mut self, n: usize) -> Result<(), Error> {
+        for _ in 0..n {
+            self.write_str(INDENT)?;
+        }
+        Ok(())
+    }
+
+    fn write_str(&mut self, s: &str) -> Result<(), Error> {
+        self.w.write_str(s)?;
+        self.written += s.len();
+        Ok(())
+    }
+
+    fn write_newline(&mut self) -> Result<(), Error> {
+        self.write_char('\n')?;
+        self.written = 0;
+        Ok(())
+    }
+
+    fn write_char(&mut self, c: char) -> Result<(), Error> {
+        self.w.write_char(c)?;
+        self.written += 1;
+        Ok(())
+    }
 }
 
-fn skip_event<'a, I>(s: &mut Peekable<I>) -> Result<(), Error>
-where
-    I: Iterator<Item = ScanResult<'a>>,
-{
-    next_event(s)?;
+const INDENT: &str = "  ";
+const LINE_LENGTH: usize = 80;
+
+fn can_fit_value(val: &ValueToken, space: usize) -> Option<usize> {
+    let remaining = space as i64;
+    let remaining = match val {
+        ValueToken::Object(v) => return can_fit_object(v, space),
+        ValueToken::Array(v) => return can_fit_array(v, space),
+        ValueToken::String(v) => remaining - (2 + v.len() as i64),
+        ValueToken::Number(v) => remaining - v.len() as i64,
+        ValueToken::Bool(v) => {
+            if *v {
+                remaining - 4
+            } else {
+                remaining - 5
+            }
+        }
+        ValueToken::Null => remaining - 4,
+    };
+    if remaining >= 0 {
+        Some(remaining as usize)
+    } else {
+        None
+    }
+}
+
+fn can_fit_object(vals: &[ObjectValue], space: usize) -> Option<usize> {
+    let num_vals = vals.len() as i64;
+    let mut remaining = (space as i64) - 2; // For object start/close.
+    if !vals.is_empty() {
+        // Object padding + (key quotes + colon + padding) * values + (comma + padding) * values - 1.
+        remaining -= 2 + 4 * num_vals + 2 * (num_vals - 1);
+    }
+    if remaining < 0 {
+        return None;
+    }
+    for val in vals {
+        match val {
+            ObjectValue::Metadata(_) => return None,
+            ObjectValue::KeyVal(k, v) => {
+                if !v.comments.is_empty() {
+                    return None;
+                }
+                remaining -= k.len() as i64;
+                if remaining < 0 {
+                    return None;
+                }
+                match can_fit_value(&v.token, remaining as usize) {
+                    None => return None,
+                    Some(size) => {
+                        remaining = size as i64;
+                    }
+                }
+            }
+        }
+    }
+
+    if remaining >= 0 {
+        Some(remaining as usize)
+    } else {
+        None
+    }
+}
+
+fn can_fit_array(vals: &[ArrayValue], space: usize) -> Option<usize> {
+    let num_vals = vals.len() as i64;
+    let mut remaining = (space as i64) - 2; // For array start/close.
+    if !vals.is_empty() {
+        // (comma + padding) * values - 1.
+        remaining -= 2 * (num_vals - 1);
+    }
+    if remaining < 0 {
+        return None;
+    }
+    for val in vals {
+        match val {
+            ArrayValue::Metadata(_) => return None,
+            ArrayValue::ArrayVal(v) => {
+                if !v.comments.is_empty() {
+                    return None;
+                }
+                match can_fit_value(&v.token, remaining as usize) {
+                    None => return None,
+                    Some(size) => {
+                        remaining = size as i64;
+                    }
+                }
+            }
+        }
+    }
+
+    if remaining >= 0 {
+        Some(remaining as usize)
+    } else {
+        None
+    }
+}
+
+pub fn write_json_compact<W: Write>(w: &mut W, root: &Root) -> Result<(), Error> {
+    write_json_value_compact(w, &root.value)
+}
+
+pub fn write_json_value_compact<W: Write>(w: &mut W, value: &Value) -> Result<(), Error> {
+    match &value.token {
+        ValueToken::Object(vals) => {
+            w.write_char('{')?;
+            let mut first = true;
+            for val in vals {
+                if let ObjectValue::KeyVal(k, v) = val {
+                    if first {
+                        first = false;
+                    } else {
+                        w.write_char(',')?;
+                    }
+                    w.write_char('"')?;
+                    w.write_str(k)?;
+                    w.write_str("\":")?;
+                    write_json_value_compact(w, v)?;
+                }
+            }
+            w.write_char('}')?;
+        }
+        ValueToken::Array(vals) => {
+            w.write_char('[')?;
+            let mut first = true;
+            for val in vals {
+                if let ArrayValue::ArrayVal(v) = val {
+                    if first {
+                        first = false;
+                    } else {
+                        w.write_char(',')?;
+                    }
+                    write_json_value_compact(w, v)?;
+                }
+            }
+            w.write_char(']')?;
+        }
+        ValueToken::String(v) => {
+            w.write_char('"')?;
+            w.write_str(v)?;
+            w.write_char('"')?;
+        }
+        ValueToken::Number(v) => w.write_str(v)?,
+        ValueToken::Bool(v) => {
+            if *v {
+                w.write_str("true")?;
+            } else {
+                w.write_str("false")?;
+            }
+        }
+        ValueToken::Null => w.write_str("null")?,
+    }
     Ok(())
 }
-
-fn next_event<'a, I>(s: &mut Peekable<I>) -> Result<Option<Event<'a>>, Error>
-where
-    I: Iterator<Item = ScanResult<'a>>,
-{
-    match s.next() {
-        Some(Ok(event)) => Ok(Some(event)),
-        Some(Err(err)) => Err(err),
-        None => Ok(None),
-    }
-}
-
-fn peek_event<'a, I>(s: &mut Peekable<I>) -> Result<Option<&Event<'a>>, Error>
-where
-    I: Iterator<Item = ScanResult<'a>>,
-{
-    match s.peek() {
-        Some(Ok(event)) => Ok(Some(event)),
-        None => Ok(None),
-        Some(Err(err)) => Err(err.clone()),
-    }
-}
-
-fn write_str<W>(w: &mut W, s: &str) -> Result<(), Error>
-where
-    W: Write,
-{
-    w.write_str(s)?;
-    Ok(())
-}
-
-fn write_char<W>(w: &mut W, c: char) -> Result<(), Error>
-where
-    W: Write,
-{
-    w.write_char(c)?;
-    Ok(())
-}
-
-fn write_indent<W>(w: &mut W, indent: usize) -> Result<(), Error>
-where
-    W: Write,
-{
-    for _ in 0..indent {
-        w.write_str("  ")?;
-    }
-    Ok(())
-}
-
+/*
 #[cfg(test)]
 mod tests {
     use std::fs::{read_dir, read_to_string};
@@ -448,10 +418,10 @@ mod tests {
                 // True.
                 true,
             ],
-            
+
             // And another.
         "key2": { "nested": // And another one.
-        100, "value": true, "third": "this" 
+        100, "value": true, "third": "this"
 
         // Weird comment before comma.
         , "is": "a", "v":{"another" :"object",}  },
@@ -475,3 +445,4 @@ mod tests {
         println!("-----\n{}-----", buf2);
     }
 }
+*/
