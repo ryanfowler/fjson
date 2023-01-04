@@ -50,6 +50,20 @@ impl<'a> Scanner<'a> {
         }
     }
 
+    pub fn json(self) -> impl Iterator<Item = ScanResult<'a>> {
+        self.into_iter().filter(|event| {
+            if let Ok(event) = event {
+                match event.token {
+                    Token::BlockComment(_) | Token::LineComment(_) | Token::Newline => {
+                        return false
+                    }
+                    _ => {}
+                }
+            }
+            true
+        })
+    }
+
     fn parse_value(&mut self) -> Option<ScanResult<'a>> {
         self.skip_whitespace();
         if let Some((i, c)) = self.next_char() {
