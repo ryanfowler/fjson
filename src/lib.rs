@@ -3,31 +3,11 @@
 //! A library for parsing and formatting JSON with C-style comments and trailing
 //! commas.
 //!
-//! ## Usage
+//! ## Format as JSONC
 //!
-//! Given the following input:
-//!
-//! ```jsonc
-//! // This is a JSON value with comments and trailing commas
-//! {
-//!     /* The project name is fjson */
-//!     "project": "fjson",
-//!     "language": "Rust",
-//!     "license": [
-//!         "MIT",
-//!     ],
-//!
-//!
-//!     // This project is public.
-//!     "public": true,
-//! }
-//! ```
-//!
-//! ### Format as JSONC
+//! Format to pretty JSONC, intended for human viewing:
 //!
 //! ```
-//! use fjson::Error;
-//!
 //! const INPUT: &str = r#"
 //! // This is a JSON value with comments and trailing commas
 //! {
@@ -43,27 +23,31 @@
 //!     "public": true,
 //! }"#;
 //!
-//! fn main() -> Result<(), Error> {
+//! fn main() -> Result<(), fjson::Error> {
 //!     let output = fjson::format_jsonc(INPUT)?;
 //!     println!("{}", output);
 //!     Ok(())
 //! }
 //!
-//! // Outputs:
-//! //
-//! // // This is a JSON value with comments and trailing commas
-//! // {
-//! //   /* The project name is fjson */
-//! //   "project": "fjson",
-//! //   "language": "Rust",
-//! //   "license": ["MIT"],
-//! //
-//! //   // This project is public.
-//! //   "public": true
-//! // }
+//! /*
+//!   Outputs:
+//!
+//!   // This is a JSON value with comments and trailing commas
+//!   {
+//!     /* The project name is fjson */
+//!     "project": "fjson",
+//!     "language": "Rust",
+//!     "license": ["MIT"],
+//!
+//!     // This project is public.
+//!     "public": true
+//!   }
+//! */
 //! ```
 //!
-//! ### Format as valid, pretty JSON
+//! ## Format as JSON
+//!
+//! Format to pretty JSON, intended for human viewing:
 //!
 //! ```
 //! use fjson::Error;
@@ -89,17 +73,21 @@
 //!     Ok(())
 //! }
 //!
-//! // Outputs:
-//! //
-//! // {
-//! //   "project": "fjson",
-//! //   "language": "Rust",
-//! //   "license": ["MIT"],
-//! //   "public": true
-//! // }
+//! /*
+//!   Outputs:
+//!
+//!   {
+//!     "project": "fjson",
+//!     "language": "Rust",
+//!     "license": ["MIT"],
+//!     "public": true
+//!   }
+//! */
 //! ```
 //!
-//! ### Format as valid, compact JSON
+//! ## Format as valid, compact JSON
+//!
+//! Format to compact JSON, intended for computer consumption:
 //!
 //! ```
 //! use fjson::Error;
@@ -125,9 +113,11 @@
 //!     Ok(())
 //! }
 //!
-//! // Outputs:
+//! /*
+//!   Outputs:
 //!
-//! // {"project":"fjson","language":"Rust","license":["MIT"],"public":true}
+//!   {"project":"fjson","language":"Rust","license":["MIT"],"public":true}
+//! */
 //! ```
 //!
 //! ## Deserialize with [Serde](https://serde.rs/)

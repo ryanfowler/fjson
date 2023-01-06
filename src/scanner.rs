@@ -1,3 +1,5 @@
+//! Scanner that provides an iterator over JSONC tokens.
+
 use std::{iter::Peekable, ops::Range, str::CharIndices};
 
 use crate::error::Error;

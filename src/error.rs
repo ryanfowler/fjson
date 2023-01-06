@@ -1,3 +1,5 @@
+//! Error handling for the fjson crate.
+
 use std::{
     error,
     fmt::{self, Display},

@@ -1,8 +1,10 @@
+//! Format `Root` values to JSONC or pretty/compact JSON.
+
 use std::fmt::{Error, Write};
 
 use crate::ast::{ArrayValue, Comment, Metadata, ObjectValue, Root, Value, ValueToken};
 
-/// Serializes/formats the provided JSON `Root` object to the writer as "jsonc".
+/// Serializes/formats the provided JSON `Root` value to the writer as "jsonc".
 ///
 /// The output will be formatted according to a number of rules and is intended
 /// for human viewing.
@@ -323,7 +325,7 @@ fn can_fit_array(vals: &[ArrayValue], space: usize) -> Option<usize> {
     }
 }
 
-/// Serializes/formats the provided JSON `Root` object to the writer as valid
+/// Serializes/formats the provided JSON `Root` value to the writer as valid
 /// JSON.
 ///
 /// The output will be formatted as valid, compact JSON; intended for

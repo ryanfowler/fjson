@@ -1,3 +1,5 @@
+//! Parse JSONC into an abstract syntax tree.
+
 use std::iter::Peekable;
 
 use crate::error::Error;
@@ -407,6 +409,7 @@ where
     Ok(newlines)
 }
 
+/// Strip all comments and newlines from the provided `Root` value.
 pub fn strip_metadata(root: &mut Root) {
     root.meta_above.clear();
     root.meta_below.clear();
