@@ -9,6 +9,7 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
+serde_json = { version = "1.0.91", features = ["preserve_order"] }
 
 [dependencies.fjson]
 path = ".."
@@ -21,7 +22,13 @@ members = ["."]
 debug = 1
 
 [[bin]]
-name = "fuzz_target_1"
-path = "fuzz_targets/fuzz_target_1.rs"
+name = "jsonc"
+path = "fuzz_targets/jsonc.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "json"
+path = "fuzz_targets/json.rs"
 test = false
 doc = false
