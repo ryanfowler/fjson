@@ -181,7 +181,7 @@ use std::fmt::Write;
 pub use error::Error;
 use scanner::Scanner;
 
-/// Prases and formats JSON with C-style comments and trailing commas according
+/// Parses and formats JSON with C-style comments and trailing commas according
 /// to internal rules and is intended for human viewing.
 pub fn format_jsonc(input: &str) -> Result<String, Error> {
     let mut out = String::with_capacity(input.len() + 128);

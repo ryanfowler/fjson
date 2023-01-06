@@ -23,14 +23,16 @@ Given the following input:
 }
 ```
 
-### Format as JSONC
+## Format as JSONC
+
+Format to pretty JSONC, intended for human viewing:
 
 ```rust
 let output = fjson::format_jsonc(input).unwrap();
 println!("{}", output);
 ```
 
-Printing:
+Prints:
 
 ```jsonc
 // This is a JSON value with comments and trailing commas
@@ -45,14 +47,17 @@ Printing:
 }
 ```
 
-### Format as valid, pretty JSON
+
+## Format as valid, pretty JSON
+
+Format to pretty JSON, intended for human viewing:
 
 ```rust
 let output = fjson::format_json(input)?;
 println!("{}", output);
 ```
 
-Printing:
+Prints:
 
 ```jsonc
 {
@@ -63,14 +68,16 @@ Printing:
 }
 ```
 
-### Format as valid, compact JSON
+## Format as valid, compact JSON
+
+Format to compact JSON, intended for computer consumption:
 
 ```rust
 let output = fjson::format_json_compact(input)?;
 println!("{}", output);
 ```
 
-Printing:
+Prints:
 
 ```json
 {"project":"fjson","language":"Rust","license":["MIT"],"public":true}
@@ -79,7 +86,7 @@ Printing:
 ## Deserialize with [Serde](https://serde.rs/)
 
 To parse JSON with C-style comments and trailing commas, but deserialize via
-serde, the following can be done:
+serde, this can be accomplished with the following:
 
 ```rust
 use serde::Deserialize;
