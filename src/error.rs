@@ -1,19 +1,33 @@
 use std::{
+    error,
     fmt::{self, Display},
     ops::Range,
 };
 
 use crate::scanner::{Event, Token};
 
+/// The error type used in this crate.
 #[derive(Clone, Debug)]
 pub enum Error {
+    /// An unexpected character was encountered when tokenizing the JSON source.
     UnexpectedCharacter((usize, char)),
+    /// An unexpected JSON token was encountered when parsing the source.
     UnexpectedToken((Range<usize>, TokenType)),
+    /// The end-of-file was reached while parsing the JSON source.
     UnexpectedEOF,
+    /// Error formatting the JSON to the std::fmt::Writer provided.
     Write(fmt::Error),
 }
 
-impl std::error::Error for Error {}
+impl error::Error for Error {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        if let Error::Write(err) = self {
+            Some(err)
+        } else {
+            None
+        }
+    }
+}
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -52,6 +66,7 @@ impl std::convert::From<&Event<'_>> for (Range<usize>, TokenType) {
     }
 }
 
+/// The different types of JSON tokens.
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum TokenType {
     Newline,

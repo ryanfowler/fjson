@@ -2,6 +2,10 @@ use std::fmt::{Error, Write};
 
 use crate::ast::{ArrayValue, Comment, Metadata, ObjectValue, Root, Value, ValueToken};
 
+/// Serializes/formats the provided JSON `Root` object to the writer as "jsonc".
+///
+/// The output will be formatted according to a number of rules and is intended
+/// for human viewing.
 pub fn write_jsonc<W: Write>(w: &mut W, root: &Root) -> Result<(), Error> {
     let mut ctx = Context { w, written: 0 };
     for meta in &root.meta_above {
@@ -56,7 +60,10 @@ impl<'a, W: Write> Context<'a, W> {
                 self.write_char(' ')?;
             } else {
                 self.write_newline()?;
-                self.write_indent(indent + 1)?;
+                match val {
+                    ObjectValue::Metadata(Metadata::Newline) => {}
+                    _ => self.write_indent(indent + 1)?,
+                }
             }
             match val {
                 ObjectValue::KeyVal(k, v) => {
@@ -100,7 +107,10 @@ impl<'a, W: Write> Context<'a, W> {
                 }
             } else {
                 self.write_newline()?;
-                self.write_indent(indent + 1)?;
+                match val {
+                    ArrayValue::Metadata(Metadata::Newline) => {}
+                    _ => self.write_indent(indent + 1)?,
+                }
             }
             match val {
                 ArrayValue::ArrayVal(v) => {
@@ -313,6 +323,11 @@ fn can_fit_array(vals: &[ArrayValue], space: usize) -> Option<usize> {
     }
 }
 
+/// Serializes/formats the provided JSON `Root` object to the writer as valid
+/// JSON.
+///
+/// The output will be formatted as valid, compact JSON; intended for
+/// consumption by computers.
 pub fn write_json_compact<W: Write>(w: &mut W, root: &Root) -> Result<(), Error> {
     write_json_value_compact(w, &root.value)
 }
@@ -370,62 +385,13 @@ fn write_json_value_compact<W: Write>(w: &mut W, value: &Value) -> Result<(), Er
     Ok(())
 }
 
-/*
 #[cfg(test)]
 mod tests {
-    use std::fs::{read_dir, read_to_string};
-
     use super::*;
-    use crate::scanner::Scanner;
+    use crate::ast::parse;
 
     #[test]
-    fn format_success() -> Result<(), Error> {
-        let dir = read_dir("./src/tests/format").unwrap();
-        for file in dir {
-            let file = file.unwrap();
-            let file_name = file.file_name();
-            let file_str = file_name.to_str().unwrap();
-            if file_str.ends_with("-out.jsonc") || file_str.ends_with("-out.json") {
-                continue;
-            }
-            let input = read_to_string(file.path()).unwrap();
-            let output = read_to_string(
-                file.path()
-                    .to_str()
-                    .unwrap()
-                    .replace(".jsonc", "-out.jsonc"),
-            )
-            .unwrap();
-            let mut out = String::new();
-            format_jsonc(Scanner::new(&input), &mut out)?;
-            if out != output {
-                println!("Got:\n{}-----\nExpected:\n{}-----", out, output);
-                panic!("Test failed: {:?}", file.file_name());
-            }
-
-            let mut out2 = String::new();
-            format_jsonc(Scanner::new(&out), &mut out2)?;
-            if out2 != out {
-                println!("Got:\n{}-----\nExpected:\n{}-----", out2, out);
-                panic!("Test failed: {:?}", file.file_name());
-            }
-
-            let mut out3 = String::new();
-            format_json(Scanner::new(&input), &mut out3)?;
-            let json_val =
-                read_to_string(file.path().to_str().unwrap().replace(".jsonc", "-out.json"))
-                    .unwrap();
-            if out3 != json_val {
-                println!("Got:\n{}-----\nExpected:\n{}-----", out3, json_val);
-                panic!("Test failed: {:?}", file.file_name());
-            }
-        }
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_format_jsonc() {
+    fn test_format() {
         let input = r#"
         // This is a comment.
         // Second line.
@@ -455,23 +421,49 @@ mod tests {
         // Weird comment before comma.
         , "is": "a", "v":{"another" :"object",}  },
         } // Trailing comment."#;
-        let mut buf = String::new();
-        println!("{}", input);
-        if let Err(err) = format_jsonc(Scanner::new(input), &mut buf) {
-            println!("ERROR: {}", err);
-        }
-        println!("-----\n{}-----", buf);
-        let mut buf2 = String::new();
-        if let Err(err) = format_jsonc(Scanner::new(buf.as_str()), &mut buf2) {
-            println!("ERROR: {}", err);
-        }
-        //println!("-----\n{}-----", buf2);
-        assert!(buf == buf2);
-        buf2.clear();
-        if let Err(err) = format_json(Scanner::new(input), &mut buf2) {
-            println!("ERROR: {}", err);
-        }
-        println!("-----\n{}-----", buf2);
+        let root = parse(input).unwrap();
+
+        let expected_jsonc = r#"// This is a comment.
+// Second line.
+
+// Break, than third.
+
+{
+  // Object start.
+
+  "key1": "val1", // Same line comment.
+  "k": "v",
+  // Next line comment.
+  "arr_key": [
+    // Array start.
+
+    "val1",
+    100, // Before comma
+
+    // True.
+    true
+  ],
+
+  // And another.
+  "key2": {
+    // And another one.
+    "nested": 100,
+    "value": true,
+    "third": "this",
+
+    // Weird comment before comma.
+    "is": "a",
+    "v": { "another": "object" }
+  }
+} // Trailing comment.
+"#;
+        let mut jsonc = String::new();
+        write_jsonc(&mut jsonc, &root).unwrap();
+        assert_eq!(&jsonc, expected_jsonc);
+
+        let expected_json_compact = r#"{"key1":"val1","k":"v","arr_key":["val1",100,true],"key2":{"nested":100,"value":true,"third":"this","is":"a","v":{"another":"object"}}}"#;
+        let mut json_compact = String::new();
+        write_json_compact(&mut json_compact, &root).unwrap();
+        assert_eq!(&json_compact, expected_json_compact);
     }
 }
-*/

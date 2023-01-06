@@ -2,12 +2,16 @@ use std::{iter::Peekable, ops::Range, str::CharIndices};
 
 use crate::error::Error;
 
+/// Event combines a JSON Token and range in the source string. It is emitted
+/// from the Scanner.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Event<'a> {
     pub token: Token<'a>,
     pub range: Range<usize>,
 }
 
+/// Token represents a single JSON token and is emitted via an Event from the
+/// Scanner. Its lifetime is tied to the lifetime of the source string.
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Token<'a> {
     Newline,
@@ -25,8 +29,13 @@ pub enum Token<'a> {
     Bool(bool),
 }
 
+/// ScanResult represents the output of the Scanner Iterator.
 pub type ScanResult<'a> = Result<Event<'a>, Error>;
 
+/// Scanner is a lexer for JSON with C-style comments and trailing commas. It is
+/// itself an `Iterator` over `ScanResult`s. Usually, a Scanner is only required
+/// to be used directly when you want to filter out certain Token types (like
+/// with the `without_metadata` method).
 pub struct Scanner<'a> {
     input: &'a str,
     current_idx: usize,
@@ -42,6 +51,7 @@ impl<'a> Iterator for Scanner<'a> {
 }
 
 impl<'a> Scanner<'a> {
+    /// Creates a new Scanner from the input string.
     pub fn new(input: &'a str) -> Self {
         Scanner {
             input,
@@ -50,7 +60,8 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    pub fn json(self) -> impl Iterator<Item = ScanResult<'a>> {
+    /// Return an `Iterator` that filters out all C-style comments and newlines.
+    pub fn without_metadata(self) -> impl Iterator<Item = ScanResult<'a>> {
         self.into_iter().filter(|event| {
             if let Ok(event) = event {
                 match event.token {
@@ -180,20 +191,28 @@ impl<'a> Scanner<'a> {
 
     fn parse_line_comment(&mut self, start: usize) -> ScanResult<'a> {
         let mut end = start + 2;
-        while let Some(&(i, c)) = self.peek_char() {
-            end = i;
-            if c == '\n' {
-                break;
-            } else if c == '\r' {
-                self.skip_char();
-                if let Some(&(_, c)) = self.peek_char() {
+        loop {
+            match self.peek_char() {
+                Some(&(i, c)) => {
+                    end = i;
                     if c == '\n' {
                         break;
+                    } else if c == '\r' {
+                        self.skip_char();
+                        if let Some(&(_, c)) = self.peek_char() {
+                            if c == '\n' {
+                                break;
+                            }
+                        }
+                        continue;
+                    } else {
+                        self.skip_char();
                     }
                 }
-                continue;
-            } else {
-                self.skip_char();
+                None => {
+                    end += 1;
+                    break;
+                }
             }
         }
         Ok(Event {
@@ -299,7 +318,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn scanner() {
+    fn test_scanner() {
         let input = r#"{
             // This is a comment.
             "key1": "val1",
@@ -307,16 +326,164 @@ mod tests {
             /*
              * This is a block comment.
              */
-            "key3":[        "1", 2, {}  ]
+            "key3":[    true,    "1", 2, {}, null,  ]
         }"#;
+        let expected = vec![
+            Event {
+                token: Token::ObjectStart,
+                range: 0..1,
+            },
+            Event {
+                token: Token::Newline,
+                range: 1..2,
+            },
+            Event {
+                token: Token::LineComment(" This is a comment."),
+                range: 14..35,
+            },
+            Event {
+                token: Token::Newline,
+                range: 35..36,
+            },
+            Event {
+                token: Token::String("key1"),
+                range: 48..54,
+            },
+            Event {
+                token: Token::Colon,
+                range: 54..55,
+            },
+            Event {
+                token: Token::String("val1"),
+                range: 56..62,
+            },
+            Event {
+                token: Token::Comma,
+                range: 62..63,
+            },
+            Event {
+                token: Token::Newline,
+                range: 63..64,
+            },
+            Event {
+                token: Token::String("key2"),
+                range: 76..82,
+            },
+            Event {
+                token: Token::Colon,
+                range: 82..83,
+            },
+            Event {
+                token: Token::Number("100"),
+                range: 84..87,
+            },
+            Event {
+                token: Token::Comma,
+                range: 87..88,
+            },
+            Event {
+                token: Token::Newline,
+                range: 88..89,
+            },
+            Event {
+                token: Token::BlockComment(
+                    "\n             * This is a block comment.\n             ",
+                ),
+                range: 101..159,
+            },
+            Event {
+                token: Token::Newline,
+                range: 159..160,
+            },
+            Event {
+                token: Token::String("key3"),
+                range: 172..178,
+            },
+            Event {
+                token: Token::Colon,
+                range: 178..179,
+            },
+            Event {
+                token: Token::ArrayStart,
+                range: 179..180,
+            },
+            Event {
+                token: Token::Bool(true),
+                range: 184..188,
+            },
+            Event {
+                token: Token::Comma,
+                range: 188..189,
+            },
+            Event {
+                token: Token::String("1"),
+                range: 193..196,
+            },
+            Event {
+                token: Token::Comma,
+                range: 196..197,
+            },
+            Event {
+                token: Token::Number("2"),
+                range: 198..199,
+            },
+            Event {
+                token: Token::Comma,
+                range: 199..200,
+            },
+            Event {
+                token: Token::ObjectStart,
+                range: 201..202,
+            },
+            Event {
+                token: Token::ObjectEnd,
+                range: 202..203,
+            },
+            Event {
+                token: Token::Comma,
+                range: 203..204,
+            },
+            Event {
+                token: Token::Null,
+                range: 205..209,
+            },
+            Event {
+                token: Token::Comma,
+                range: 209..210,
+            },
+            Event {
+                token: Token::ArrayEnd,
+                range: 212..213,
+            },
+            Event {
+                token: Token::Newline,
+                range: 213..214,
+            },
+            Event {
+                token: Token::ObjectEnd,
+                range: 222..223,
+            },
+        ];
+
         let scanner = Scanner::new(input);
-        println!("{}", input);
-        for token in scanner {
-            match token {
-                Err(err) => panic!("parsing error: {:?}", err),
-                Ok(token) => {
-                    println!("{:?}", token);
-                }
+        let output = scanner.map(|v| v.unwrap()).collect::<Vec<_>>();
+        assert_eq!(output, expected);
+
+        for event in output {
+            match event.token {
+                Token::Newline => assert_eq!(&input[event.range], "\n"),
+                Token::ObjectStart => assert_eq!(&input[event.range], "{"),
+                Token::ObjectEnd => assert_eq!(&input[event.range], "}"),
+                Token::ArrayStart => assert_eq!(&input[event.range], "["),
+                Token::ArrayEnd => assert_eq!(&input[event.range], "]"),
+                Token::Comma => assert_eq!(&input[event.range], ","),
+                Token::Colon => assert_eq!(&input[event.range], ":"),
+                Token::Null => assert_eq!(&input[event.range], "null"),
+                Token::LineComment(v) => assert_eq!(&input[event.range], ["//", v].join("")),
+                Token::BlockComment(v) => assert_eq!(&input[event.range], ["/*", v, "*/"].join("")),
+                Token::String(v) => assert_eq!(&input[event.range], ["\"", v, "\""].join("")),
+                Token::Number(v) => assert_eq!(&input[event.range], v),
+                Token::Bool(v) => assert_eq!(&input[event.range], if v { "true" } else { "false" }),
             }
         }
     }

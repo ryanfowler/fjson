@@ -3,20 +3,25 @@ use std::iter::Peekable;
 use crate::error::Error;
 use crate::scanner::{Event, ScanResult, Scanner, Token};
 
-#[derive(Debug)]
+/// Root represents the root JSON value. It may include `Metadata` above and
+/// below the actual value.
+#[derive(Clone, Debug, PartialEq)]
 pub struct Root<'a> {
     pub meta_above: Vec<Metadata<'a>>,
     pub value: Value<'a>,
     pub meta_below: Vec<Metadata<'a>>,
 }
 
-#[derive(Debug)]
+/// Value represents a JSON value. The `comments` field includes any comments
+/// located on the same line as the value.
+#[derive(Clone, Debug, PartialEq)]
 pub struct Value<'a> {
     pub token: ValueToken<'a>,
     pub comments: Vec<Comment<'a>>,
 }
 
-#[derive(Debug)]
+/// ValueToken represents the JSON "token" of a `Value`.
+#[derive(Clone, Debug, PartialEq)]
 pub enum ValueToken<'a> {
     Object(Vec<ObjectValue<'a>>),
     Array(Vec<ArrayValue<'a>>),
@@ -26,34 +31,41 @@ pub enum ValueToken<'a> {
     Null,
 }
 
-#[derive(Debug)]
+/// ArrayValue represents the possible values inside of a JSON array.
+#[derive(Clone, Debug, PartialEq)]
 pub enum ArrayValue<'a> {
     Metadata(Metadata<'a>),
     ArrayVal(Value<'a>),
 }
 
-#[derive(Debug)]
+/// ObjectValue represents the possible values inside of a JSON object.
+#[derive(Clone, Debug, PartialEq)]
 pub enum ObjectValue<'a> {
     Metadata(Metadata<'a>),
     KeyVal(&'a str, Value<'a>),
 }
 
-#[derive(Debug)]
+/// Metadata represents non-JSON values such as `Comment`s and `Newline`s.
+#[derive(Clone, Debug, PartialEq)]
 pub enum Metadata<'a> {
     Comment(Comment<'a>),
     Newline,
 }
 
-#[derive(Debug)]
+/// Comment represents a C-style comment.
+#[derive(Clone, Debug, PartialEq)]
 pub enum Comment<'a> {
     Line(&'a str),
     Block(&'a str),
 }
 
+/// Parse the provided JSON string into a `Root` object.
 pub fn parse(input: &str) -> Result<Root, Error> {
     parse_iter(Scanner::new(input))
 }
 
+/// Parse the provided `Iterator` of `ScanResult`s into a `Root` object. The
+/// iterator should be created via a `Scanner` instance.
 pub fn parse_iter<'a, I>(iter: I) -> Result<Root<'a>, Error>
 where
     I: Iterator<Item = ScanResult<'a>>,
@@ -422,13 +434,12 @@ fn strip_meta_value(value: &mut Value) {
     }
 }
 
-/*
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_format_jsonc() {
+    fn test_parse() {
         let input = r#"
         // This is a comment.
         // Second line.
@@ -456,14 +467,127 @@ mod tests {
         100, "value": true, "third": "this"
 
         // Weird comment before comma.
-        , "is": "a", "v":{"another" :"object",}, "a": ["value", "this value should cause the array to go multi-line, I think."]  },
+        , "is": "a", "v":{"another" :"object",},},
         } // Trailing comment."#;
-        println!("{}", input);
-        let root = parse(input).unwrap();
-        println!("{:#?}", root);
-        let mut out = String::new();
-        //format_jsonc(&mut out, root).unwrap();
-        println!("{}", out);
+
+        let expected = Root {
+            meta_above: vec![
+                Metadata::Comment(Comment::Line(" This is a comment.")),
+                Metadata::Comment(Comment::Line(" Second line.")),
+                Metadata::Newline,
+                Metadata::Comment(Comment::Line(" Break, than third.")),
+                Metadata::Newline,
+            ],
+            value: Value {
+                token: ValueToken::Object(vec![
+                    ObjectValue::Metadata(Metadata::Comment(Comment::Line(" Object start."))),
+                    ObjectValue::Metadata(Metadata::Newline),
+                    ObjectValue::KeyVal(
+                        "key1",
+                        Value {
+                            token: ValueToken::String("val1"),
+                            comments: vec![Comment::Line(" Same line comment.")],
+                        },
+                    ),
+                    ObjectValue::KeyVal(
+                        "k",
+                        Value {
+                            token: ValueToken::String("v"),
+                            comments: vec![],
+                        },
+                    ),
+                    ObjectValue::Metadata(Metadata::Comment(Comment::Line(" Next line comment."))),
+                    ObjectValue::KeyVal(
+                        "arr_key",
+                        Value {
+                            token: ValueToken::Array(vec![
+                                ArrayValue::Metadata(Metadata::Comment(Comment::Line(
+                                    " Array start.",
+                                ))),
+                                ArrayValue::Metadata(Metadata::Newline),
+                                ArrayValue::ArrayVal(Value {
+                                    token: ValueToken::String("val1"),
+                                    comments: vec![],
+                                }),
+                                ArrayValue::ArrayVal(Value {
+                                    token: ValueToken::Number("100"),
+                                    comments: vec![Comment::Line(" Before comma")],
+                                }),
+                                ArrayValue::Metadata(Metadata::Newline),
+                                ArrayValue::Metadata(Metadata::Comment(Comment::Line(" True."))),
+                                ArrayValue::ArrayVal(Value {
+                                    token: ValueToken::Bool(true),
+                                    comments: vec![],
+                                }),
+                            ]),
+                            comments: vec![],
+                        },
+                    ),
+                    ObjectValue::Metadata(Metadata::Newline),
+                    ObjectValue::Metadata(Metadata::Comment(Comment::Line(" And another."))),
+                    ObjectValue::KeyVal(
+                        "key2",
+                        Value {
+                            token: ValueToken::Object(vec![
+                                ObjectValue::Metadata(Metadata::Comment(Comment::Line(
+                                    " And another one.",
+                                ))),
+                                ObjectValue::KeyVal(
+                                    "nested",
+                                    Value {
+                                        token: ValueToken::Number("100"),
+                                        comments: vec![],
+                                    },
+                                ),
+                                ObjectValue::KeyVal(
+                                    "value",
+                                    Value {
+                                        token: ValueToken::Bool(true),
+                                        comments: vec![],
+                                    },
+                                ),
+                                ObjectValue::KeyVal(
+                                    "third",
+                                    Value {
+                                        token: ValueToken::String("this"),
+                                        comments: vec![],
+                                    },
+                                ),
+                                ObjectValue::Metadata(Metadata::Newline),
+                                ObjectValue::Metadata(Metadata::Comment(Comment::Line(
+                                    " Weird comment before comma.",
+                                ))),
+                                ObjectValue::KeyVal(
+                                    "is",
+                                    Value {
+                                        token: ValueToken::String("a"),
+                                        comments: vec![],
+                                    },
+                                ),
+                                ObjectValue::KeyVal(
+                                    "v",
+                                    Value {
+                                        token: ValueToken::Object(vec![ObjectValue::KeyVal(
+                                            "another",
+                                            Value {
+                                                token: ValueToken::String("object"),
+                                                comments: vec![],
+                                            },
+                                        )]),
+                                        comments: vec![],
+                                    },
+                                ),
+                            ]),
+                            comments: vec![],
+                        },
+                    ),
+                ]),
+                comments: vec![Comment::Line(" Trailing comment.")],
+            },
+            meta_below: vec![],
+        };
+
+        let root = parse(input).expect("unexpected parsing error");
+        assert_eq!(root, expected);
     }
 }
-*/
