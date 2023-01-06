@@ -116,7 +116,7 @@ impl<'a> Scanner<'a> {
                 '/' => Some(self.parse_comment(start)),
                 '"' => Some(self.parse_string(start)),
                 c => {
-                    if c.is_numeric() || c == '-' {
+                    if ('1'..='9').contains(&c) || c == '-' {
                         Some(self.parse_number(start))
                     } else {
                         Some(Err(Error::UnexpectedCharacter((i, c))))
