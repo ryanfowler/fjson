@@ -35,7 +35,7 @@ impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::UnexpectedCharacter((i, c)) => {
-                write!(f, "unexpected character at index {}: '{}'", i, c)
+                write!(f, "unexpected character at index {i}: '{c}'")
             }
             Self::UnexpectedToken((range, typ)) => {
                 write!(
@@ -45,7 +45,7 @@ impl fmt::Display for Error {
                 )
             }
             Self::UnexpectedEOF => f.write_str("unexpected end of file"),
-            Self::Write(err) => write!(f, "writing: {}", err),
+            Self::Write(err) => write!(f, "writing: {err}"),
         }
     }
 }

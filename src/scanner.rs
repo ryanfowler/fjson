@@ -192,7 +192,7 @@ impl<'a> Scanner<'a> {
     }
 
     fn parse_line_comment(&mut self, start: usize) -> ScanResult<'a> {
-        let mut end = start + 2;
+        let mut end;
         loop {
             match self.peek_char() {
                 Some(&(i, c)) => {
@@ -212,7 +212,7 @@ impl<'a> Scanner<'a> {
                     }
                 }
                 None => {
-                    end += 1;
+                    end = self.input.len();
                     break;
                 }
             }
@@ -488,5 +488,17 @@ mod tests {
                 Token::Bool(v) => assert_eq!(&input[event.range], if v { "true" } else { "false" }),
             }
         }
+    }
+
+    #[test]
+    fn test_line_comment() {
+        let input = "//";
+        let exp = Event {
+            token: Token::LineComment(""),
+            range: 0..2,
+        };
+        let scanner = Scanner::new(input);
+        let output = scanner.map(|v| v.unwrap()).collect::<Vec<_>>();
+        assert_eq!(output, vec![exp]);
     }
 }
