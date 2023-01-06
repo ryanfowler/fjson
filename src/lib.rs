@@ -291,6 +291,8 @@ mod tests {
 "#;
         let out = format_jsonc(INPUT).unwrap();
         assert_eq!(&out, expected);
+        let out2 = format_jsonc(&out).unwrap();
+        assert_eq!(&out2, &out);
     }
 
     #[test]
@@ -310,6 +312,9 @@ mod tests {
 "#;
         let out = format_json(INPUT).unwrap();
         assert_eq!(&out, expected);
+        let out2 = format_json(&out).unwrap();
+        assert_eq!(&out2, &out);
+        let _: serde_json::Value = serde_json::from_str(&out).expect("unable to parse json output");
     }
 
     #[test]
@@ -317,5 +322,8 @@ mod tests {
         let expected = r#"{"key1":"val1","k":"v","arr_key":["val1",100,true],"key2":{"nested":100,"value":true,"third":"this","is":"a","v":{"another":"object"}}}"#;
         let out = format_json_compact(INPUT).unwrap();
         assert_eq!(&out, expected);
+        let out2 = format_json_compact(&out).unwrap();
+        assert_eq!(&out2, &out);
+        let _: serde_json::Value = serde_json::from_str(&out).expect("unable to parse json output");
     }
 }

@@ -423,7 +423,6 @@ mod tests {
         // Weird comment before comma.
         , "is": "a", "v":{"another" :"object",}  },
         } // Trailing comment."#;
-        let root = parse(input).unwrap();
 
         let expected_jsonc = r#"// This is a comment.
 // Second line.
@@ -459,13 +458,29 @@ mod tests {
   }
 } // Trailing comment.
 "#;
+        let root = parse(input).unwrap();
+
         let mut jsonc = String::new();
         write_jsonc(&mut jsonc, &root).unwrap();
         assert_eq!(&jsonc, expected_jsonc);
+
+        // Parse and reformat the jsonc output. The reformatted output should
+        // match the original output.
+        let root2 = parse(&jsonc).unwrap();
+        let mut jsonc2 = String::new();
+        write_jsonc(&mut jsonc2, &root2).unwrap();
+        assert_eq!(&jsonc2, &jsonc);
 
         let expected_json_compact = r#"{"key1":"val1","k":"v","arr_key":["val1",100,true],"key2":{"nested":100,"value":true,"third":"this","is":"a","v":{"another":"object"}}}"#;
         let mut json_compact = String::new();
         write_json_compact(&mut json_compact, &root).unwrap();
         assert_eq!(&json_compact, expected_json_compact);
+
+        // Parse and reformat the json compact output. The reformatted output
+        // should match the original output.
+        let root2 = parse(&json_compact).unwrap();
+        let mut json_compact2 = String::new();
+        write_json_compact(&mut json_compact2, &root2).unwrap();
+        assert_eq!(&json_compact2, &json_compact);
     }
 }
