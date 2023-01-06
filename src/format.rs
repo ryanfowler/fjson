@@ -90,6 +90,7 @@ impl<'a, W: Write> Context<'a, W> {
         }
         self.write_char('}')
     }
+
     fn write_json_array(
         &mut self,
         vals: &[ArrayValue],
@@ -152,11 +153,8 @@ impl<'a, W: Write> Context<'a, W> {
     }
 
     fn write_comments(&mut self, cs: &[Comment]) -> Result<(), Error> {
-        if cs.is_empty() {
-            return Ok(());
-        }
-        self.write_char(' ')?;
         for comment in cs {
+            self.write_char(' ')?;
             self.write_comment(comment)?;
         }
         Ok(())
@@ -165,9 +163,13 @@ impl<'a, W: Write> Context<'a, W> {
     fn write_comment(&mut self, comment: &Comment) -> Result<(), Error> {
         match comment {
             Comment::Block(c) => {
-                // Do we need to look for newlines and adjust self.written?
                 self.write_str("/*")?;
                 self.write_str(c)?;
+                if let Some(i) = c.rfind('\n') {
+                    // If the block comment contains newlines, adjust the
+                    // internal value for current bytes written.
+                    self.written = c.len() - 1 - i;
+                }
                 self.write_str("*/")
             }
             Comment::Line(c) => {
