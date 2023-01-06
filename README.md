@@ -3,6 +3,8 @@
 A Rust library for parsing and formatting JSON with C-style comments and
 trailing commas
 
+[![](https://img.shields.io/crates/v/fjson.svg)](https://crates.io/crates/fjson)
+
 ## Usage
 
 Given the following input:
