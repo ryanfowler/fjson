@@ -14,7 +14,7 @@ pub enum Error {
     /// The maximum allowed recursion was exceeded.
     RecursionLimitExceeded,
     /// An unexpected character was encountered when tokenizing the JSON source.
-    UnexpectedCharacter((usize, char)),
+    UnexpectedCharacter(usize, char),
     /// An unexpected JSON token was encountered when parsing the source.
     UnexpectedToken((Range<usize>, TokenType)),
     /// The end-of-file was reached while parsing the JSON source.
@@ -37,7 +37,7 @@ impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::RecursionLimitExceeded => write!(f, "maximum recursion limit exceeded"),
-            Self::UnexpectedCharacter((i, c)) => {
+            Self::UnexpectedCharacter(i, c) => {
                 write!(f, "unexpected character at index {i}: '{c}'")
             }
             Self::UnexpectedToken((range, typ)) => {

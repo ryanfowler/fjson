@@ -117,9 +117,9 @@ impl<'a> Scanner<'a> {
                 '"' => Some(self.parse_string(start)),
                 c => {
                     if ('1'..='9').contains(&c) || c == '-' {
-                        Some(self.parse_number(start))
+                        Some(self.parse_number(start, c))
                     } else {
-                        Some(Err(Error::UnexpectedCharacter((i, c))))
+                        Some(Err(Error::UnexpectedCharacter(i, c)))
                     }
                 }
             }
@@ -128,19 +128,54 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    fn parse_number(&mut self, start: usize) -> ScanResult<'a> {
-        // TODO(ryanfowler): Parse and validate a number properly.
-        let mut end = start + 1;
-        while let Some(&(i, c)) = self.peek_char() {
-            end = i;
-            if c.is_numeric() || c == 'e' || c == 'E' || c == '+' {
-                self.skip_char();
-            } else {
-                break;
+    fn parse_number(&mut self, start: usize, curr: char) -> ScanResult<'a> {
+        let curr = if curr == '-' {
+            match self.next_char() {
+                None => return Err(Error::UnexpectedEOF),
+                Some((i, c)) => {
+                    if !c.is_ascii_digit() {
+                        return Err(Error::UnexpectedCharacter(i, c));
+                    }
+                    c
+                }
             }
+        } else {
+            curr
+        };
+        if curr != '0' {
+            self.skip_digits();
         }
 
-        let range = start..end;
+        if let Some(&(_, '.')) = self.peek_char() {
+            self.skip_char();
+            match self.next_char() {
+                None => return Err(Error::UnexpectedEOF),
+                Some((i, c)) => {
+                    if !c.is_ascii_digit() {
+                        return Err(Error::UnexpectedCharacter(i, c));
+                    }
+                }
+            }
+            self.skip_digits();
+        }
+
+        if let Some(&(_, 'e' | 'E')) = self.peek_char() {
+            self.skip_char();
+            if let Some((_, '-' | '+')) = self.peek_char() {
+                self.skip_char();
+            }
+            match self.next_char() {
+                None => return Err(Error::UnexpectedEOF),
+                Some((i, c)) => {
+                    if !c.is_ascii_digit() {
+                        return Err(Error::UnexpectedCharacter(i, c));
+                    }
+                }
+            }
+            self.skip_digits();
+        }
+
+        let range = start..(self.current_idx + 1);
         Ok(Event {
             token: Token::Number(&self.input[range.clone()]),
             range,
@@ -148,7 +183,7 @@ impl<'a> Scanner<'a> {
     }
 
     fn parse_string(&mut self, start: usize) -> ScanResult<'a> {
-        while let Some((_, c)) = self.next_char() {
+        while let Some((i, c)) = self.next_char() {
             match c {
                 '\\' => match self.next_char() {
                     Some((i, c)) => match c {
@@ -158,14 +193,14 @@ impl<'a> Scanner<'a> {
                                 match self.next_char() {
                                     Some((i, c)) => {
                                         if !c.is_ascii_hexdigit() {
-                                            return Err(Error::UnexpectedCharacter((i, c)));
+                                            return Err(Error::UnexpectedCharacter(i, c));
                                         }
                                     }
                                     None => return Err(Error::UnexpectedEOF),
                                 }
                             }
                         }
-                        c => return Err(Error::UnexpectedCharacter((i, c))),
+                        c => return Err(Error::UnexpectedCharacter(i, c)),
                     },
                     None => return Err(Error::UnexpectedEOF),
                 },
@@ -176,7 +211,11 @@ impl<'a> Scanner<'a> {
                         range: start..(end + 1),
                     });
                 }
-                _ => {}
+                c => {
+                    if !(0x0020..0x10FFFF).contains(&(c as u32)) {
+                        return Err(Error::UnexpectedCharacter(i, c));
+                    }
+                }
             }
         }
         Err(Error::UnexpectedEOF)
@@ -186,7 +225,7 @@ impl<'a> Scanner<'a> {
         match self.next_char() {
             Some((_, '/')) => self.parse_line_comment(start),
             Some((_, '*')) => self.parse_block_comment(start),
-            Some(v) => Err(Error::UnexpectedCharacter(v)),
+            Some(v) => Err(Error::UnexpectedCharacter(v.0, v.1)),
             None => Err(Error::UnexpectedEOF),
         }
     }
@@ -245,7 +284,7 @@ impl<'a> Scanner<'a> {
                 range: start..(start + 4),
             })
         } else {
-            Err(Error::UnexpectedCharacter((start, 'n')))
+            Err(Error::UnexpectedCharacter(start, 'n'))
         }
     }
 
@@ -256,7 +295,7 @@ impl<'a> Scanner<'a> {
                 range: start..(start + 4),
             })
         } else {
-            Err(Error::UnexpectedCharacter((start, 't')))
+            Err(Error::UnexpectedCharacter(start, 't'))
         }
     }
 
@@ -267,7 +306,17 @@ impl<'a> Scanner<'a> {
                 range: start..(start + 5),
             })
         } else {
-            Err(Error::UnexpectedCharacter((start, 'f')))
+            Err(Error::UnexpectedCharacter(start, 'f'))
+        }
+    }
+
+    fn skip_digits(&mut self) {
+        while let Some(&(_, c)) = self.peek_char() {
+            if c.is_ascii_digit() {
+                self.skip_char();
+            } else {
+                break;
+            }
         }
     }
 
