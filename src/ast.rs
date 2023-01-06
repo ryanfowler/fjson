@@ -61,6 +61,8 @@ pub enum Comment<'a> {
     Block(&'a str),
 }
 
+const RECURSION_LIMIT: u8 = 128;
+
 /// Parse the provided JSON string into a `Root` object.
 pub fn parse(input: &str) -> Result<Root, Error> {
     parse_iter(Scanner::new(input))
@@ -78,7 +80,7 @@ where
     while let Some(meta) = parse_metadata(&mut s)? {
         meta_above.push(meta);
     }
-    let typ = parse_next_value(&mut s)?;
+    let typ = parse_next_value(&mut s, RECURSION_LIMIT)?;
     let comments = parse_sameline_comments(&mut s)?;
     let mut meta_below = Vec::new();
     while let Some(meta) = parse_metadata(&mut s)? {
@@ -100,24 +102,43 @@ where
     })
 }
 
-fn parse_next_value<'a, I>(s: &mut Peekable<I>) -> Result<ValueToken<'a>, Error>
+fn parse_next_value<'a, I>(
+    s: &mut Peekable<I>,
+    remaining_depth: u8,
+) -> Result<ValueToken<'a>, Error>
 where
     I: Iterator<Item = ScanResult<'a>>,
 {
     if let Some(event) = next_event(s)? {
-        parse_value(s, event)
+        parse_value(s, event, remaining_depth)
     } else {
         Err(Error::UnexpectedEOF)
     }
 }
 
-fn parse_value<'a, I>(s: &mut Peekable<I>, event: Event<'a>) -> Result<ValueToken<'a>, Error>
+fn parse_value<'a, I>(
+    s: &mut Peekable<I>,
+    event: Event<'a>,
+    remaining_depth: u8,
+) -> Result<ValueToken<'a>, Error>
 where
     I: Iterator<Item = ScanResult<'a>>,
 {
     let typ = match event.token {
-        Token::ObjectStart => parse_object(s)?,
-        Token::ArrayStart => parse_array(s)?,
+        Token::ObjectStart => {
+            let remaining_depth = remaining_depth - 1;
+            if remaining_depth == 0 {
+                return Err(Error::RecursionLimitExceeded);
+            }
+            parse_object(s, remaining_depth)?
+        }
+        Token::ArrayStart => {
+            let remaining_depth = remaining_depth - 1;
+            if remaining_depth == 0 {
+                return Err(Error::RecursionLimitExceeded);
+            }
+            parse_array(s, remaining_depth)?
+        }
         Token::Null => ValueToken::Null,
         Token::String(v) => ValueToken::String(v),
         Token::Number(v) => ValueToken::Number(v),
@@ -127,7 +148,7 @@ where
     Ok(typ)
 }
 
-fn parse_object<'a, I>(s: &mut Peekable<I>) -> Result<ValueToken<'a>, Error>
+fn parse_object<'a, I>(s: &mut Peekable<I>, remaining_depth: u8) -> Result<ValueToken<'a>, Error>
 where
     I: Iterator<Item = ScanResult<'a>>,
 {
@@ -165,7 +186,7 @@ where
                     vals.push(ObjectValue::Metadata(meta));
                 }
 
-                let typ = parse_next_value(s)?;
+                let typ = parse_next_value(s, remaining_depth)?;
                 let mut comments = Vec::new();
 
                 let mut comma = false;
@@ -226,7 +247,7 @@ where
     Ok(ValueToken::Object(vals))
 }
 
-fn parse_array<'a, I>(s: &mut Peekable<I>) -> Result<ValueToken<'a>, Error>
+fn parse_array<'a, I>(s: &mut Peekable<I>, remaining_depth: u8) -> Result<ValueToken<'a>, Error>
 where
     I: Iterator<Item = ScanResult<'a>>,
 {
@@ -245,7 +266,7 @@ where
             }
         }
 
-        let typ = parse_next_value(s)?;
+        let typ = parse_next_value(s, remaining_depth)?;
         let mut comments = Vec::new();
 
         let mut comma = false;

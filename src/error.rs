@@ -11,6 +11,8 @@ use crate::scanner::{Event, Token};
 /// The error type used in this crate.
 #[derive(Clone, Debug)]
 pub enum Error {
+    /// The maximum allowed recursion was exceeded.
+    RecursionLimitExceeded,
     /// An unexpected character was encountered when tokenizing the JSON source.
     UnexpectedCharacter((usize, char)),
     /// An unexpected JSON token was encountered when parsing the source.
@@ -34,6 +36,7 @@ impl error::Error for Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::RecursionLimitExceeded => write!(f, "maximum recursion limit exceeded"),
             Self::UnexpectedCharacter((i, c)) => {
                 write!(f, "unexpected character at index {i}: '{c}'")
             }
