@@ -3,6 +3,8 @@
 //! A library for parsing and formatting JSON with C-style comments and trailing
 //! commas.
 //!
+//! ## Usage
+//!
 //! Given the following input:
 //!
 //! ```jsonc
@@ -21,7 +23,7 @@
 //! }
 //! ```
 //!
-//! This value can be formatted to JSONC using the function:
+//! ### Format as JSONC
 //!
 //! ```
 //! use fjson::Error;
@@ -46,24 +48,22 @@
 //!     println!("{}", output);
 //!     Ok(())
 //! }
+//!
+//! // Outputs:
+//! //
+//! // // This is a JSON value with comments and trailing commas
+//! // {
+//! //   /* The project name is fjson */
+//! //   "project": "fjson",
+//! //   "language": "Rust",
+//! //   "license": ["MIT"],
+//! //
+//! //   // This project is public.
+//! //   "public": true
+//! // }
 //! ```
 //!
-//! This would print:
-//!
-//! ```jsonc
-//! // This is a JSON value with comments and trailing commas
-//! {
-//!   /* The project name is fjson */
-//!   "project": "fjson",
-//!   "language": "Rust",
-//!   "license": ["MIT"],
-//!
-//!   // This project is public.
-//!   "public": true
-//! }
-//! ```
-//!
-//! The value can also be formatted as valid JSON:
+//! ### Format as valid, pretty JSON
 //!
 //! ```
 //! use fjson::Error;
@@ -88,20 +88,18 @@
 //!     println!("{}", output);
 //!     Ok(())
 //! }
+//!
+//! // Outputs:
+//! //
+//! // {
+//! //   "project": "fjson",
+//! //   "language": "Rust",
+//! //   "license": ["MIT"],
+//! //   "public": true
+//! // }
 //! ```
 //!
-//! Which would print:
-//!
-//! ```jsonc
-//! {
-//!   "project": "fjson",
-//!   "language": "Rust",
-//!   "license": ["MIT"],
-//!   "public": true
-//! }
-//! ```
-//!
-//! Or we can format the input into compact, valid JSON:
+//! ### Format as valid, compact JSON
 //!
 //! ```
 //! use fjson::Error;
@@ -126,12 +124,10 @@
 //!     println!("{}", output);
 //!     Ok(())
 //! }
-//! ```
 //!
-//! Printing:
+//! // Outputs:
 //!
-//! ```json
-//! {"project":"fjson","language":"Rust","license":["MIT"],"public":true}
+//! // {"project":"fjson","language":"Rust","license":["MIT"],"public":true}
 //! ```
 //!
 //! ## Deserialize with [Serde](https://serde.rs/)

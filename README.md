@@ -3,6 +3,8 @@
 A Rust library for parsing and formatting JSON with C-style comments and
 trailing commas
 
+## Usage
+
 Given the following input:
 
 ```jsonc
@@ -21,14 +23,14 @@ Given the following input:
 }
 ```
 
-This value can be formatted to JSONC using the function:
+### Format as JSONC
 
 ```rust
-let output = fjson::format_jsonc(input)?;
+let output = fjson::format_jsonc(input).unwrap();
 println!("{}", output);
 ```
 
-This would print:
+Printing:
 
 ```jsonc
 // This is a JSON value with comments and trailing commas
@@ -43,14 +45,14 @@ This would print:
 }
 ```
 
-The value can also be formatted as valid JSON:
+### Format as valid, pretty JSON
 
 ```rust
 let output = fjson::format_json(input)?;
 println!("{}", output);
 ```
 
-Which would print:
+Printing:
 
 ```jsonc
 {
@@ -61,7 +63,7 @@ Which would print:
 }
 ```
 
-Or we can format the input into compact, valid JSON:
+### Format as valid, compact JSON
 
 ```rust
 let output = fjson::format_json_compact(input)?;
