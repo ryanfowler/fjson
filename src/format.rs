@@ -9,7 +9,10 @@ use crate::ast::{ArrayValue, Comment, Metadata, ObjectValue, Root, Value, ValueT
 /// The output will be formatted according to a number of rules and is intended
 /// for human viewing.
 pub fn write_jsonc<W: Write>(w: &mut W, root: &Root) -> Result<(), Error> {
-    let mut ctx = Context { w, written: 0 };
+    let mut ctx = Context {
+        w,
+        current_line_chars: 0,
+    };
     for meta in &root.meta_above {
         ctx.write_metadata(meta)?;
         ctx.write_newline()?;
@@ -25,7 +28,7 @@ pub fn write_jsonc<W: Write>(w: &mut W, root: &Root) -> Result<(), Error> {
 
 struct Context<'a, W: Write> {
     w: &'a mut W,
-    written: usize,
+    current_line_chars: usize,
 }
 
 impl<'a, W: Write> Context<'a, W> {
@@ -53,8 +56,8 @@ impl<'a, W: Write> Context<'a, W> {
     ) -> Result<(), Error> {
         let length = vals.len();
         let same_line = allow_sameline
-            && LINE_LENGTH > self.written()
-            && can_fit_object(vals, LINE_LENGTH - self.written()).is_some();
+            && LINE_LENGTH > self.current_line_chars()
+            && can_fit_object(vals, LINE_LENGTH - self.current_line_chars()).is_some();
 
         self.write_char('{')?;
         for (i, val) in vals.iter().enumerate() {
@@ -99,8 +102,8 @@ impl<'a, W: Write> Context<'a, W> {
     ) -> Result<(), Error> {
         let length = vals.len();
         let same_line = allow_sameline
-            && LINE_LENGTH > self.written()
-            && can_fit_array(vals, LINE_LENGTH - self.written()).is_some();
+            && LINE_LENGTH > self.current_line_chars()
+            && can_fit_array(vals, LINE_LENGTH - self.current_line_chars()).is_some();
 
         self.write_char('[')?;
         for (i, val) in vals.iter().enumerate() {
@@ -141,8 +144,8 @@ impl<'a, W: Write> Context<'a, W> {
         }
     }
 
-    fn written(&self) -> usize {
-        self.written
+    fn current_line_chars(&self) -> usize {
+        self.current_line_chars
     }
 
     fn write_metadata(&mut self, meta: &Metadata) -> Result<(), Error> {
@@ -167,8 +170,8 @@ impl<'a, W: Write> Context<'a, W> {
                 self.write_str(c)?;
                 if let Some(i) = c.rfind('\n') {
                     // If the block comment contains newlines, adjust the
-                    // internal value for current bytes written.
-                    self.written = c.len() - 1 - i;
+                    // internal value of chars written for the current line.
+                    self.current_line_chars = c[(i + 1)..].chars().count();
                 }
                 self.write_str("*/")
             }
@@ -194,19 +197,19 @@ impl<'a, W: Write> Context<'a, W> {
 
     fn write_str(&mut self, s: &str) -> Result<(), Error> {
         self.w.write_str(s)?;
-        self.written += s.len();
+        self.current_line_chars += s.chars().count();
         Ok(())
     }
 
     fn write_newline(&mut self) -> Result<(), Error> {
         self.write_char('\n')?;
-        self.written = 0;
+        self.current_line_chars = 0;
         Ok(())
     }
 
     fn write_char(&mut self, c: char) -> Result<(), Error> {
         self.w.write_char(c)?;
-        self.written += 1;
+        self.current_line_chars += 1;
         Ok(())
     }
 }
@@ -219,7 +222,7 @@ fn can_fit_value(val: &ValueToken, space: usize) -> Option<usize> {
     let remaining = match val {
         ValueToken::Object(v) => return can_fit_object(v, space),
         ValueToken::Array(v) => return can_fit_array(v, space),
-        ValueToken::String(v) => remaining - (2 + v.len() as i64),
+        ValueToken::String(v) => remaining - (2 + v.chars().count() as i64),
         ValueToken::Number(v) => remaining - v.len() as i64,
         ValueToken::Bool(v) => {
             if *v {
@@ -258,7 +261,7 @@ fn can_fit_object(vals: &[ObjectValue], space: usize) -> Option<usize> {
                 if !v.comments.is_empty() {
                     return None;
                 }
-                remaining -= k.len() as i64;
+                remaining -= k.chars().count() as i64;
                 if remaining < 0 {
                     return None;
                 }
