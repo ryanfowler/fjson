@@ -32,3 +32,9 @@ name = "json"
 path = "fuzz_targets/json.rs"
 test = false
 doc = false
+
+[[bin]]
+name = "scanner"
+path = "fuzz_targets/scanner.rs"
+test = false
+doc = false
