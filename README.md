@@ -12,6 +12,7 @@ Given the following input:
 ```jsonc
 // This is a JSON value with comments and trailing commas
 {
+
     /* The project name is fjson */
     "project": "fjson",
     "language": "Rust",
@@ -20,17 +21,17 @@ Given the following input:
     ],
 
 
-    // This project is public.
+  // This project is public.
     "public": true,
 }
 ```
 
-## Format as JSONC
+## Format to JSONC
 
 Format to pretty JSONC, intended for human viewing:
 
 ```rust
-let output = fjson::format_jsonc(input).unwrap();
+let output = fjson::to_jsonc(input).unwrap();
 println!("{}", output);
 ```
 
@@ -50,12 +51,12 @@ Prints:
 ```
 
 
-## Format as valid, pretty JSON
+## Format to valid, pretty JSON
 
 Format to pretty JSON, intended for human viewing:
 
 ```rust
-let output = fjson::format_json(input)?;
+let output = fjson::to_json(input)?;
 println!("{}", output);
 ```
 
@@ -70,12 +71,12 @@ Prints:
 }
 ```
 
-## Format as valid, compact JSON
+## Format to valid, compact JSON
 
 Format to compact JSON, intended for computer consumption:
 
 ```rust
-let output = fjson::format_json_compact(input)?;
+let output = fjson::to_json_compact(input)?;
 println!("{}", output);
 ```
 
@@ -101,7 +102,7 @@ struct Project {
     public: bool,
 }
 
-let output = fjson::format_json_compact(input)?;
+let output = fjson::to_json_compact(input)?;
 let project: Project = serde_json::from_str(&output)?;
 println!("{:#?}", project);
 ```

@@ -24,7 +24,7 @@
 //! }"#;
 //!
 //! fn main() -> Result<(), fjson::Error> {
-//!     let output = fjson::format_jsonc(INPUT)?;
+//!     let output = fjson::to_jsonc(INPUT)?;
 //!     println!("{}", output);
 //!     Ok(())
 //! }
@@ -68,7 +68,7 @@
 //! }"#;
 //!
 //! fn main() -> Result<(), Error> {
-//!     let output = fjson::format_json(INPUT)?;
+//!     let output = fjson::to_json(INPUT)?;
 //!     println!("{}", output);
 //!     Ok(())
 //! }
@@ -108,7 +108,7 @@
 //! }"#;
 //!
 //! fn main() -> Result<(), Error> {
-//!     let output = fjson::format_json_compact(INPUT)?;
+//!     let output = fjson::to_json_compact(INPUT)?;
 //!     println!("{}", output);
 //!     Ok(())
 //! }
@@ -153,7 +153,7 @@
 //! }"#;
 //!
 //! fn main() {
-//!     let output = fjson::format_json_compact(INPUT).unwrap();
+//!     let output = fjson::to_json_compact(INPUT).unwrap();
 //!     let project: Project = from_str(&output).unwrap();
 //!     println!("{:#?}", project);
 //! }
@@ -171,17 +171,17 @@ use std::fmt::Write;
 pub use error::Error;
 use scanner::Scanner;
 
-/// Parses and formats JSON with C-style comments and trailing commas according
-/// to internal rules and is intended for human viewing.
-pub fn format_jsonc(input: &str) -> Result<String, Error> {
+/// Parses and formats JSON with C-style comments and trailing for readability
+/// and is intended for human viewing.
+pub fn to_jsonc(input: &str) -> Result<String, Error> {
     let mut out = String::with_capacity(input.len() + 128);
-    format_jsonc_writer(&mut out, input)?;
+    to_jsonc_writer(&mut out, input)?;
     Ok(out)
 }
 
 /// Parses and formats JSON to the provided writer with C-style comments and
-/// trailing commas according to internal rules and is intended for human viewing.
-pub fn format_jsonc_writer<W: Write>(w: &mut W, input: &str) -> Result<(), Error> {
+/// trailing commas for readability and is intended for human viewing.
+pub fn to_jsonc_writer<W: Write>(w: &mut W, input: &str) -> Result<(), Error> {
     let root = ast::parse(input)?;
     format::write_jsonc(w, &root)?;
     Ok(())
@@ -189,15 +189,15 @@ pub fn format_jsonc_writer<W: Write>(w: &mut W, input: &str) -> Result<(), Error
 
 /// Parses JSON with C-style comments and trailing commas, and formats into
 /// valid "pretty" JSON intended for human viewing.
-pub fn format_json(input: &str) -> Result<String, Error> {
+pub fn to_json(input: &str) -> Result<String, Error> {
     let mut out = String::with_capacity(input.len() + 128);
-    format_json_writer(&mut out, input)?;
+    to_json_writer(&mut out, input)?;
     Ok(out)
 }
 
 /// Parses JSON with C-style comments and trailing commas, and formats to the
 /// provided writer into valid "pretty" JSON intended for human viewing.
-pub fn format_json_writer<W: Write>(w: &mut W, input: &str) -> Result<(), Error> {
+pub fn to_json_writer<W: Write>(w: &mut W, input: &str) -> Result<(), Error> {
     let root = ast::parse_iter(Scanner::new(input).without_metadata())?;
     format::write_jsonc(w, &root)?;
     Ok(())
@@ -205,15 +205,15 @@ pub fn format_json_writer<W: Write>(w: &mut W, input: &str) -> Result<(), Error>
 
 /// Parses JSON with C-style comments and trailing commas, and serializes into
 /// valid compact JSON intended for comptuer consumption.
-pub fn format_json_compact(input: &str) -> Result<String, Error> {
+pub fn to_json_compact(input: &str) -> Result<String, Error> {
     let mut out = String::with_capacity(input.len());
-    format_json_writer_compact(&mut out, input)?;
+    to_json_writer_compact(&mut out, input)?;
     Ok(out)
 }
 
 /// Parses JSON with C-style comments and trailing commas, and serializes to the
 /// provided writer into valid compact JSON intended for comptuer consumption.
-pub fn format_json_writer_compact<W: Write>(w: &mut W, input: &str) -> Result<(), Error> {
+pub fn to_json_writer_compact<W: Write>(w: &mut W, input: &str) -> Result<(), Error> {
     let root = ast::parse_iter(Scanner::new(input).without_metadata())?;
     format::write_json_compact(w, &root)?;
     Ok(())
@@ -254,7 +254,7 @@ mod tests {
     } // Trailing comment."#;
 
     #[test]
-    fn test_format_jsonc() {
+    fn test_to_jsonc() {
         let expected = r#"// This is a comment.
 // Second line.
 
@@ -289,14 +289,14 @@ mod tests {
   }
 } // Trailing comment.
 "#;
-        let out = format_jsonc(INPUT).unwrap();
+        let out = to_jsonc(INPUT).unwrap();
         assert_eq!(&out, expected);
-        let out2 = format_jsonc(&out).unwrap();
+        let out2 = to_jsonc(&out).unwrap();
         assert_eq!(&out2, &out);
     }
 
     #[test]
-    fn test_format_json() {
+    fn test_to_json() {
         let expected = r#"{
   "key1": "val1",
   "k": "v",
@@ -310,19 +310,19 @@ mod tests {
   }
 }
 "#;
-        let out = format_json(INPUT).unwrap();
+        let out = to_json(INPUT).unwrap();
         assert_eq!(&out, expected);
-        let out2 = format_json(&out).unwrap();
+        let out2 = to_json(&out).unwrap();
         assert_eq!(&out2, &out);
         let _: serde_json::Value = serde_json::from_str(&out).expect("unable to parse json output");
     }
 
     #[test]
-    fn test_format_json_compact() {
+    fn test_to_json_compact() {
         let expected = r#"{"key1":"val1","k":"v","arr_key":["val1",100,true],"key2":{"nested":100,"value":true,"third":"this","is":"a","v":{"another":"object"}}}"#;
-        let out = format_json_compact(INPUT).unwrap();
+        let out = to_json_compact(INPUT).unwrap();
         assert_eq!(&out, expected);
-        let out2 = format_json_compact(&out).unwrap();
+        let out2 = to_json_compact(&out).unwrap();
         assert_eq!(&out2, &out);
         let _: serde_json::Value = serde_json::from_str(&out).expect("unable to parse json output");
     }
