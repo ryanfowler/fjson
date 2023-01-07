@@ -130,15 +130,7 @@ impl<'a> Scanner<'a> {
 
     fn parse_number(&mut self, start: usize, curr: char) -> ScanResult<'a> {
         let curr = if curr == '-' {
-            match self.next_char() {
-                None => return Err(Error::UnexpectedEOF),
-                Some((i, c)) => {
-                    if !c.is_ascii_digit() {
-                        return Err(Error::UnexpectedCharacter(i, c));
-                    }
-                    c
-                }
-            }
+            self.next_digit()?
         } else {
             curr
         };
@@ -148,14 +140,7 @@ impl<'a> Scanner<'a> {
 
         if let Some(&(_, '.')) = self.peek_char() {
             self.skip_char();
-            match self.next_char() {
-                None => return Err(Error::UnexpectedEOF),
-                Some((i, c)) => {
-                    if !c.is_ascii_digit() {
-                        return Err(Error::UnexpectedCharacter(i, c));
-                    }
-                }
-            }
+            self.next_digit()?;
             self.skip_digits();
         }
 
@@ -164,14 +149,7 @@ impl<'a> Scanner<'a> {
             if let Some((_, '-' | '+')) = self.peek_char() {
                 self.skip_char();
             }
-            match self.next_char() {
-                None => return Err(Error::UnexpectedEOF),
-                Some((i, c)) => {
-                    if !c.is_ascii_digit() {
-                        return Err(Error::UnexpectedCharacter(i, c));
-                    }
-                }
-            }
+            self.next_digit()?;
             self.skip_digits();
         }
 
@@ -307,6 +285,19 @@ impl<'a> Scanner<'a> {
             })
         } else {
             Err(Error::UnexpectedCharacter(start, 'f'))
+        }
+    }
+
+    fn next_digit(&mut self) -> Result<char, Error> {
+        match self.next_char() {
+            Some((i, c)) => {
+                if c.is_ascii_digit() {
+                    Ok(c)
+                } else {
+                    Err(Error::UnexpectedCharacter(i, c))
+                }
+            }
+            None => Err(Error::UnexpectedEOF),
         }
     }
 
