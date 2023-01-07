@@ -87,7 +87,7 @@ where
         meta_below.push(meta);
     }
     if let Some(event) = next_event(&mut s)? {
-        return Err(Error::UnexpectedToken(event.into()));
+        return Err(event.into());
     }
     if let Some(Metadata::Newline) = meta_below.last() {
         meta_below.pop();
@@ -143,7 +143,7 @@ where
         Token::String(v) => ValueToken::String(v),
         Token::Number(v) => ValueToken::Number(v),
         Token::Bool(v) => ValueToken::Bool(v),
-        _ => return Err(Error::UnexpectedToken(event.into())),
+        _ => return Err(event.into()),
     };
     Ok(typ)
 }
@@ -177,7 +177,7 @@ where
                         token: Token::Colon,
                         range: _,
                     }) => {}
-                    Some(event) => return Err(Error::UnexpectedToken(event.into())),
+                    Some(event) => return Err(event.into()),
                     None => return Err(Error::UnexpectedEOF),
                 }
 
@@ -197,7 +197,7 @@ where
                         }
                         Token::Comma => {
                             if comma {
-                                return Err(Error::UnexpectedToken(event.into()));
+                                return Err(event.into());
                             }
                             skip_event(s)?;
                             comma = true;
@@ -231,12 +231,12 @@ where
                         Some(event) => match event.token {
                             Token::Comma => {}
                             Token::ObjectEnd => break,
-                            _ => return Err(Error::UnexpectedToken(event.into())),
+                            _ => return Err(event.into()),
                         },
                     }
                 }
             }
-            _ => return Err(Error::UnexpectedToken(event.into())),
+            _ => return Err(event.into()),
         }
     }
 
@@ -277,7 +277,7 @@ where
                 }
                 Token::Comma => {
                     if comma {
-                        return Err(Error::UnexpectedToken(event.into()));
+                        return Err(event.into());
                     }
                     skip_event(s)?;
                     comma = true;
@@ -308,7 +308,7 @@ where
                 Some(event) => match event.token {
                     Token::Comma => {}
                     Token::ArrayEnd => break,
-                    _ => return Err(Error::UnexpectedToken(event.into())),
+                    _ => return Err(event.into()),
                 },
             }
         }

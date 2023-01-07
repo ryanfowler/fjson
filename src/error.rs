@@ -16,7 +16,7 @@ pub enum Error {
     /// An unexpected character was encountered when tokenizing the JSON source.
     UnexpectedCharacter(usize, char),
     /// An unexpected JSON token was encountered when parsing the source.
-    UnexpectedToken((Range<usize>, TokenType)),
+    UnexpectedToken(Range<usize>, TokenType),
     /// The end-of-file was reached while parsing the JSON source.
     UnexpectedEOF,
     /// Error formatting the JSON to the std::fmt::Writer provided.
@@ -40,7 +40,7 @@ impl fmt::Display for Error {
             Self::UnexpectedCharacter(i, c) => {
                 write!(f, "unexpected character at index {i}: '{c}'")
             }
-            Self::UnexpectedToken((range, typ)) => {
+            Self::UnexpectedToken(range, typ) => {
                 write!(
                     f,
                     "unexpected token at index range {} -> {}: '{}'",
@@ -59,15 +59,15 @@ impl From<fmt::Error> for Error {
     }
 }
 
-impl std::convert::From<Event<'_>> for (Range<usize>, TokenType) {
+impl std::convert::From<Event<'_>> for Error {
     fn from(value: Event<'_>) -> Self {
-        (value.range, TokenType::from(value.token))
+        Error::UnexpectedToken(value.range, TokenType::from(value.token))
     }
 }
 
-impl std::convert::From<&Event<'_>> for (Range<usize>, TokenType) {
+impl std::convert::From<&Event<'_>> for Error {
     fn from(value: &Event<'_>) -> Self {
-        (value.range.clone(), TokenType::from(value.token))
+        Error::UnexpectedToken(value.range.clone(), TokenType::from(value.token))
     }
 }
 
