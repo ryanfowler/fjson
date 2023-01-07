@@ -4,14 +4,77 @@ use std::fmt::{Error, Write};
 
 use crate::ast::{ArrayValue, Comment, Metadata, ObjectValue, Root, Value, ValueToken};
 
+/// Options represents the customizations that can be made when formatting.
+#[derive(Debug, Copy, Clone)]
+pub struct Options<'a> {
+    indent: &'a str,
+    line_length: usize,
+    max_object_pairs_per_line: usize,
+    max_array_values_per_line: usize,
+}
+
+impl Default for Options<'_> {
+    fn default() -> Self {
+        Self {
+            indent: "  ",
+            line_length: 80,
+            max_object_pairs_per_line: 1,
+            max_array_values_per_line: 4,
+        }
+    }
+}
+
+impl<'a> Options<'a> {
+    /// Sets the indent to the provided string. The default is two spaces.
+    pub fn with_indent(self, s: &'a str) -> Self {
+        Self { indent: s, ..self }
+    }
+
+    /// Sets the line length that objects and arrays will wrap on. The default
+    /// is 80 characters.
+    pub fn with_line_length(self, n: usize) -> Self {
+        Self {
+            line_length: n,
+            ..self
+        }
+    }
+
+    /// Sets the maximum number of object key/value pairs that can appear on the
+    /// same line. The default is 1.
+    pub fn with_max_object_pairs_per_line(self, n: usize) -> Self {
+        Self {
+            max_object_pairs_per_line: n,
+            ..self
+        }
+    }
+
+    /// Sets the maximum number of array values that can appear on the same
+    /// line. The default is 4.
+    pub fn with_max_array_values_per_line(self, n: usize) -> Self {
+        Self {
+            max_array_values_per_line: n,
+            ..self
+        }
+    }
+}
+
 /// Serializes/formats the provided JSON `Root` value to the writer as "jsonc".
 ///
 /// The output will be formatted according to a number of rules and is intended
 /// for human viewing.
 pub fn write_jsonc<W: Write>(w: &mut W, root: &Root) -> Result<(), Error> {
+    write_jsonc_opts(w, root, &Options::default())
+}
+
+/// Serializes/formats the provided JSON `Root` value to the writer as "jsonc"
+/// using the formatting options.
+///
+/// The output written to `w` is intended for human viewing.
+pub fn write_jsonc_opts<W: Write>(w: &mut W, root: &Root, opts: &Options<'_>) -> Result<(), Error> {
     let mut ctx = Context {
         w,
         current_line_chars: 0,
+        opts: *opts,
     };
     for meta in &root.meta_above {
         ctx.write_metadata(meta)?;
@@ -29,6 +92,7 @@ pub fn write_jsonc<W: Write>(w: &mut W, root: &Root) -> Result<(), Error> {
 struct Context<'a, W: Write> {
     w: &'a mut W,
     current_line_chars: usize,
+    opts: Options<'a>,
 }
 
 impl<'a, W: Write> Context<'a, W> {
@@ -56,8 +120,10 @@ impl<'a, W: Write> Context<'a, W> {
     ) -> Result<(), Error> {
         let length = vals.len();
         let same_line = allow_sameline
-            && LINE_LENGTH > self.current_line_chars()
-            && can_fit_object(vals, LINE_LENGTH - self.current_line_chars()).is_some();
+            && self.opts.line_length > self.current_line_chars()
+            && self
+                .can_fit_object(vals, self.opts.line_length - self.current_line_chars())
+                .is_some();
 
         self.write_char('{')?;
         for (i, val) in vals.iter().enumerate() {
@@ -102,8 +168,10 @@ impl<'a, W: Write> Context<'a, W> {
     ) -> Result<(), Error> {
         let length = vals.len();
         let same_line = allow_sameline
-            && LINE_LENGTH > self.current_line_chars()
-            && can_fit_array(vals, LINE_LENGTH - self.current_line_chars()).is_some();
+            && self.opts.line_length > self.current_line_chars()
+            && self
+                .can_fit_array(vals, self.opts.line_length - self.current_line_chars())
+                .is_some();
 
         self.write_char('[')?;
         for (i, val) in vals.iter().enumerate() {
@@ -190,7 +258,7 @@ impl<'a, W: Write> Context<'a, W> {
 
     fn write_indent(&mut self, n: usize) -> Result<(), Error> {
         for _ in 0..n {
-            self.write_str(INDENT)?;
+            self.write_str(self.opts.indent)?;
         }
         Ok(())
     }
@@ -212,121 +280,118 @@ impl<'a, W: Write> Context<'a, W> {
         self.current_line_chars += 1;
         Ok(())
     }
-}
 
-const INDENT: &str = "  ";
-const LINE_LENGTH: usize = 80;
-
-fn can_fit_value(val: &ValueToken, space: usize) -> Option<usize> {
-    let remaining = space as i64;
-    let remaining = match val {
-        ValueToken::Object(v) => return can_fit_object(v, space),
-        ValueToken::Array(v) => return can_fit_array(v, space),
-        ValueToken::String(v) => remaining - (2 + v.chars().count() as i64),
-        ValueToken::Number(v) => remaining - v.len() as i64,
-        ValueToken::Bool(v) => {
-            if *v {
-                remaining - 4
-            } else {
-                remaining - 5
+    fn can_fit_value(&self, val: &ValueToken, space: usize) -> Option<usize> {
+        let remaining = space as i64;
+        let remaining = match val {
+            ValueToken::Object(v) => return self.can_fit_object(v, space),
+            ValueToken::Array(v) => return self.can_fit_array(v, space),
+            ValueToken::String(v) => remaining - (2 + v.chars().count() as i64),
+            ValueToken::Number(v) => remaining - v.len() as i64,
+            ValueToken::Bool(v) => {
+                if *v {
+                    remaining - 4
+                } else {
+                    remaining - 5
+                }
             }
+            ValueToken::Null => remaining - 4,
+        };
+        if remaining >= 0 {
+            Some(remaining as usize)
+        } else {
+            None
         }
-        ValueToken::Null => remaining - 4,
-    };
-    if remaining >= 0 {
-        Some(remaining as usize)
-    } else {
-        None
-    }
-}
-
-fn can_fit_object(vals: &[ObjectValue], space: usize) -> Option<usize> {
-    let num_vals = vals.len() as i64;
-    if num_vals > 1 {
-        return None;
     }
 
-    let mut remaining = (space as i64) - 2; // For object start/close.
-    if !vals.is_empty() {
-        // Object padding + (key quotes + colon + padding) * values + (comma + padding) * (values - 1).
-        remaining -= 2 + 4 * num_vals + 2 * (num_vals - 1);
-    }
-    if remaining < 0 {
-        return None;
-    }
-    for val in vals {
-        match val {
-            ObjectValue::Metadata(_) => return None,
-            ObjectValue::KeyVal(k, v) => {
-                if !v.comments.is_empty() {
-                    return None;
-                }
-                remaining -= k.chars().count() as i64;
-                if remaining < 0 {
-                    return None;
-                }
-                match v.token {
-                    ValueToken::Array(_) => return None,
-                    ValueToken::Object(_) => return None,
-                    _ => {}
-                }
-                match can_fit_value(&v.token, remaining as usize) {
-                    None => return None,
-                    Some(size) => {
-                        remaining = size as i64;
+    fn can_fit_object(&self, vals: &[ObjectValue], space: usize) -> Option<usize> {
+        let num_vals = vals.len();
+        if num_vals > self.opts.max_object_pairs_per_line {
+            return None;
+        }
+
+        let mut remaining = (space as i64) - 2; // For object start/close.
+        if !vals.is_empty() {
+            // Object padding + (key quotes + colon + padding) * values + (comma + padding) * (values - 1).
+            remaining -= 2 + 4 * num_vals as i64 + 2 * (num_vals as i64 - 1);
+        }
+        if remaining < 0 {
+            return None;
+        }
+        for val in vals {
+            match val {
+                ObjectValue::Metadata(_) => return None,
+                ObjectValue::KeyVal(k, v) => {
+                    if !v.comments.is_empty() {
+                        return None;
+                    }
+                    remaining -= k.chars().count() as i64;
+                    if remaining < 0 {
+                        return None;
+                    }
+                    match v.token {
+                        ValueToken::Array(_) => return None,
+                        ValueToken::Object(_) => return None,
+                        _ => {}
+                    }
+                    match self.can_fit_value(&v.token, remaining as usize) {
+                        None => return None,
+                        Some(size) => {
+                            remaining = size as i64;
+                        }
                     }
                 }
             }
         }
+
+        if remaining >= 0 {
+            Some(remaining as usize)
+        } else {
+            None
+        }
     }
 
-    if remaining >= 0 {
-        Some(remaining as usize)
-    } else {
-        None
-    }
-}
+    fn can_fit_array(&self, vals: &[ArrayValue], space: usize) -> Option<usize> {
+        let num_vals = vals.len();
+        if num_vals > self.opts.max_array_values_per_line {
+            return None;
+        }
 
-fn can_fit_array(vals: &[ArrayValue], space: usize) -> Option<usize> {
-    let num_vals = vals.len() as i64;
-    if num_vals > 4 {
-        return None;
-    }
-
-    let mut remaining = (space as i64) - 2; // For array start/close.
-    if !vals.is_empty() {
-        // (comma + padding) * (values - 1).
-        remaining -= 2 * (num_vals - 1);
-    }
-    if remaining < 0 {
-        return None;
-    }
-    for val in vals {
-        match val {
-            ArrayValue::Metadata(_) => return None,
-            ArrayValue::ArrayVal(v) => {
-                if !v.comments.is_empty() {
-                    return None;
-                }
-                match v.token {
-                    ValueToken::Array(_) => return None,
-                    ValueToken::Object(_) => return None,
-                    _ => {}
-                }
-                match can_fit_value(&v.token, remaining as usize) {
-                    None => return None,
-                    Some(size) => {
-                        remaining = size as i64;
+        let mut remaining = (space as i64) - 2; // For array start/close.
+        if !vals.is_empty() {
+            // (comma + padding) * (values - 1).
+            remaining -= 2 * (num_vals as i64 - 1);
+        }
+        if remaining < 0 {
+            return None;
+        }
+        for val in vals {
+            match val {
+                ArrayValue::Metadata(_) => return None,
+                ArrayValue::ArrayVal(v) => {
+                    if !v.comments.is_empty() {
+                        return None;
+                    }
+                    match v.token {
+                        ValueToken::Array(_) => return None,
+                        ValueToken::Object(_) => return None,
+                        _ => {}
+                    }
+                    match self.can_fit_value(&v.token, remaining as usize) {
+                        None => return None,
+                        Some(size) => {
+                            remaining = size as i64;
+                        }
                     }
                 }
             }
         }
-    }
 
-    if remaining >= 0 {
-        Some(remaining as usize)
-    } else {
-        None
+        if remaining >= 0 {
+            Some(remaining as usize)
+        } else {
+            None
+        }
     }
 }
 
