@@ -1,12 +1,12 @@
 [package]
 name = "fjson"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Ryan Fowler"]
 edition = "2021"
 description = "A library for parsing and formatting json with C-style comments and trailing commas"
 repository = "https://github.com/ryanfowler/fjson"
 license = "MIT"
-keywords = ["json", "jsonc", "hjson", "format"]
+keywords = ["json", "jsonc", "hjson", "format", "decode"]
 categories = ["compilers", "development-tools", "encoding", "parsing"]
 
 [dev-dependencies]
