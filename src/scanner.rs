@@ -116,7 +116,7 @@ impl<'a> Scanner<'a> {
                 '/' => Some(self.parse_comment(start)),
                 '"' => Some(self.parse_string(start)),
                 c => {
-                    if ('1'..='9').contains(&c) || c == '-' {
+                    if c.is_ascii_digit() || c == '-' {
                         Some(self.parse_number(start, c))
                     } else {
                         Some(Err(Error::UnexpectedCharacter(i, c)))
@@ -536,6 +536,18 @@ mod tests {
         let exp = Event {
             token: Token::LineComment(""),
             range: 0..2,
+        };
+        let scanner = Scanner::new(input);
+        let output = scanner.map(|v| v.unwrap()).collect::<Vec<_>>();
+        assert_eq!(output, vec![exp]);
+    }
+
+    #[test]
+    fn test_number() {
+        let input = "0.01";
+        let exp = Event {
+            token: Token::Number("0.01"),
+            range: 0..4,
         };
         let scanner = Scanner::new(input);
         let output = scanner.map(|v| v.unwrap()).collect::<Vec<_>>();
