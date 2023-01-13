@@ -40,6 +40,7 @@ pub type ScanResult<'a> = Result<Event<'a>, Error>;
 /// with the `without_metadata` method).
 pub struct Scanner<'a> {
     input: &'a str,
+    has_error: bool,
     current_idx: usize,
     chars: Peekable<CharIndices<'a>>,
 }
@@ -48,7 +49,17 @@ impl<'a> Iterator for Scanner<'a> {
     type Item = ScanResult<'a>;
 
     fn next(&mut self) -> Option<ScanResult<'a>> {
-        self.parse_value()
+        if self.has_error {
+            None
+        } else {
+            match self.parse_value() {
+                Some(Err(err)) => {
+                    self.has_error = true;
+                    Some(Err(err))
+                }
+                v => v,
+            }
+        }
     }
 }
 
@@ -57,6 +68,7 @@ impl<'a> Scanner<'a> {
     pub fn new(input: &'a str) -> Self {
         Scanner {
             input,
+            has_error: false,
             current_idx: 0,
             chars: input.char_indices().peekable(),
         }
