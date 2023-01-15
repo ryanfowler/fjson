@@ -1,3 +1,5 @@
+//! Validate JSON(C) without creating an AST.
+
 use std::iter::Peekable;
 
 use crate::{

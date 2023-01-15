@@ -159,7 +159,7 @@ pub mod ast;
 pub mod error;
 pub mod format;
 pub mod scanner;
-mod validate;
+pub mod validate;
 
 use std::fmt::Write;
 
