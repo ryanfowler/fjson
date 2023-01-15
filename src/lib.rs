@@ -29,20 +29,18 @@
 //!     Ok(())
 //! }
 //!
-//! /*
-//!   Outputs:
-//!
-//!   // This is a JSON value with comments and trailing commas
-//!   {
-//!     /* The project name is fjson */
-//!     "project": "fjson",
-//!     "language": "Rust",
-//!     "license": ["MIT"],
-//!
-//!     // This project is public.
-//!     "public": true
-//!   }
-//! */
+//! // Outputs:
+//! //
+//! // // This is a JSON value with comments and trailing commas
+//! // {
+//! //   /* The project name is fjson */
+//! //   "project": "fjson",
+//! //   "language": "Rust",
+//! //   "license": ["MIT"],
+//! //
+//! //   // This project is public.
+//! //   "public": true
+//! // }
 //! ```
 //!
 //! ## Format as JSON
@@ -73,16 +71,14 @@
 //!     Ok(())
 //! }
 //!
-//! /*
-//!   Outputs:
-//!
-//!   {
-//!     "project": "fjson",
-//!     "language": "Rust",
-//!     "license": ["MIT"],
-//!     "public": true
-//!   }
-//! */
+//! // Outputs:
+//! //
+//! // {
+//! //   "project": "fjson",
+//! //   "language": "Rust",
+//! //   "license": ["MIT"],
+//! //   "public": true
+//! // }
 //! ```
 //!
 //! ## Format as valid, compact JSON
@@ -113,11 +109,9 @@
 //!     Ok(())
 //! }
 //!
-//! /*
-//!   Outputs:
-//!
-//!   {"project":"fjson","language":"Rust","license":["MIT"],"public":true}
-//! */
+//! // Outputs:
+//! //
+//! // {"project":"fjson","language":"Rust","license":["MIT"],"public":true}
 //! ```
 //!
 //! ## Deserialize with [Serde](https://serde.rs/)
@@ -165,6 +159,7 @@ pub mod ast;
 pub mod error;
 pub mod format;
 pub mod scanner;
+mod validate;
 
 use std::fmt::Write;
 
@@ -214,8 +209,7 @@ pub fn to_json_compact(input: &str) -> Result<String, Error> {
 /// Parses JSON with C-style comments and trailing commas, and serializes to the
 /// provided writer into valid compact JSON intended for comptuer consumption.
 pub fn to_json_writer_compact<W: Write>(w: &mut W, input: &str) -> Result<(), Error> {
-    let root = ast::parse_iter(Scanner::new(input).without_metadata())?;
-    format::write_json_compact(w, &root)?;
+    format::write_json_compact_iter(w, Scanner::new(input).without_metadata())?;
     Ok(())
 }
 

@@ -2,7 +2,11 @@
 
 use std::fmt::{Error, Write};
 
-use crate::ast::{ArrayValue, Comment, Metadata, ObjectValue, Root, Value, ValueToken};
+use crate::{
+    ast::{ArrayValue, Comment, Metadata, ObjectValue, Root, Value, ValueToken},
+    scanner::{ScanResult, Token},
+    validate::ValidateIter,
+};
 
 /// Options represents the customizations that can be made when formatting.
 #[derive(Debug, Copy, Clone)]
@@ -58,7 +62,7 @@ impl<'a> Options<'a> {
     }
 }
 
-/// Serializes/formats the provided JSON `Root` value to the writer as "jsonc".
+/// Serializes/formats the provided JSON [Root] value to the writer as "jsonc".
 ///
 /// The output will be formatted according to a number of rules and is intended
 /// for human viewing.
@@ -66,11 +70,11 @@ pub fn write_jsonc<W: Write>(w: &mut W, root: &Root) -> Result<(), Error> {
     write_jsonc_opts(w, root, &Options::default())
 }
 
-/// Serializes/formats the provided JSON `Root` value to the writer as "jsonc"
+/// Serializes/formats the provided JSON [Root] value to the writer as "jsonc"
 /// using the formatting options.
 ///
 /// The output written to `w` is intended for human viewing.
-pub fn write_jsonc_opts<W: Write>(w: &mut W, root: &Root, opts: &Options<'_>) -> Result<(), Error> {
+pub fn write_jsonc_opts<W: Write>(w: &mut W, root: &Root, opts: &Options) -> Result<(), Error> {
     let mut ctx = Context {
         w,
         current_line_chars: 0,
@@ -395,11 +399,54 @@ impl<'a, W: Write> Context<'a, W> {
     }
 }
 
-/// Serializes/formats the provided JSON `Root` value to the writer as valid
+/// Serializes/formats the provided `Iterator` of [ScanResult]s to the writer.
+///
+/// This function will ensure that the provided input is validate JSON(C),
+/// returning any error encountered.
+///
+/// Note: It's more efficient to use this function to serialize compact JSON
+/// from an input than parsing a [crate::ast::Root] struct and using the
+/// [write_json_compact] function.
+pub fn write_json_compact_iter<'a, W, I>(w: &mut W, iter: I) -> Result<(), crate::Error>
+where
+    W: Write,
+    I: Iterator<Item = ScanResult<'a>>,
+{
+    for result in iter.validate() {
+        let event = match result {
+            Ok(event) => event,
+            Err(err) => return Err(err),
+        };
+        match event.token {
+            Token::ObjectStart => w.write_char('{')?,
+            Token::ObjectEnd => w.write_char('}')?,
+            Token::ArrayStart => w.write_char('[')?,
+            Token::ArrayEnd => w.write_char(']')?,
+            Token::Comma => w.write_char(',')?,
+            Token::Colon => w.write_char(':')?,
+            Token::Null => w.write_str("null")?,
+            Token::String(v) => {
+                w.write_char('"')?;
+                w.write_str(v)?;
+                w.write_char('"')?;
+            }
+            Token::Number(v) => w.write_str(v)?,
+            Token::Bool(v) => w.write_str(if v { "true" } else { "false" })?,
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+/// Serializes/formats the provided JSON [Root] value to the writer as valid
 /// JSON.
 ///
 /// The output will be formatted as valid, compact JSON; intended for
 /// consumption by computers.
+///
+/// Note: It's more efficient to use the [write_json_compact_iter] function to
+/// serialize compact JSON from an input than parsing a [crate::ast::Root]
+/// struct and using this function.
 pub fn write_json_compact<W: Write>(w: &mut W, root: &Root) -> Result<(), Error> {
     write_json_value_compact(w, &root.value)
 }
@@ -460,7 +507,7 @@ fn write_json_value_compact<W: Write>(w: &mut W, value: &Value) -> Result<(), Er
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::parse;
+    use crate::{ast::parse, scanner::Scanner};
 
     #[test]
     fn test_format() {
@@ -552,5 +599,13 @@ mod tests {
         let mut json_compact2 = String::new();
         write_json_compact(&mut json_compact2, &root2).unwrap();
         assert_eq!(&json_compact2, &json_compact);
+
+        let mut json_compact_iter = String::new();
+        write_json_compact_iter(&mut json_compact_iter, Scanner::new(input)).unwrap();
+        assert_eq!(&json_compact_iter, expected_json_compact);
+
+        let mut json_compact_iter2 = String::new();
+        write_json_compact_iter(&mut json_compact_iter2, Scanner::new(&json_compact_iter)).unwrap();
+        assert_eq!(&json_compact_iter2, &json_compact_iter);
     }
 }
