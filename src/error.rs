@@ -9,7 +9,7 @@ use std::{
 use crate::scanner::{Event, Token};
 
 /// The error type used in this crate.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Error {
     /// The maximum allowed recursion was exceeded.
     RecursionLimitExceeded,

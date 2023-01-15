@@ -9,6 +9,9 @@ license = "MIT"
 keywords = ["json", "jsonc", "hjson", "format", "decode"]
 categories = ["compilers", "development-tools", "encoding", "parsing"]
 
+[dependencies]
+arrayvec = { version = "0.7.2" }
+
 [dev-dependencies]
 serde = { version = "1.0.152", features = ["derive"] }
 serde_json = { version = "1.0.91", features = ["preserve_order"] }
