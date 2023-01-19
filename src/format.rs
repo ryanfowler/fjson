@@ -405,7 +405,7 @@ impl<'a, W: Write> Context<'a, W> {
 /// returning any error encountered.
 ///
 /// Note: It's more efficient to use this function to serialize compact JSON
-/// from an input than parsing a [crate::ast::Root] struct and using the
+/// from an input than parsing a [Root] struct and using the
 /// [write_json_compact] function.
 pub fn write_json_compact_iter<'a, W, I>(w: &mut W, iter: I) -> Result<(), crate::Error>
 where
@@ -445,8 +445,8 @@ where
 /// consumption by computers.
 ///
 /// Note: It's more efficient to use the [write_json_compact_iter] function to
-/// serialize compact JSON from an input than parsing a [crate::ast::Root]
-/// struct and using this function.
+/// serialize compact JSON from an input than parsing a [Root] struct and using
+/// this function.
 pub fn write_json_compact<W: Write>(w: &mut W, root: &Root) -> Result<(), Error> {
     write_json_value_compact(w, &root.value)
 }

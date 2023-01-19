@@ -48,8 +48,6 @@
 //! Format to pretty JSON, intended for human viewing:
 //!
 //! ```
-//! use fjson::Error;
-//!
 //! const INPUT: &str = r#"
 //! // This is a JSON value with comments and trailing commas
 //! {
@@ -65,7 +63,7 @@
 //!     "public": true,
 //! }"#;
 //!
-//! fn main() -> Result<(), Error> {
+//! fn main() -> Result<(), fjson::Error> {
 //!     let output = fjson::to_json(INPUT)?;
 //!     println!("{}", output);
 //!     Ok(())
@@ -86,8 +84,6 @@
 //! Format to compact JSON, intended for computer consumption:
 //!
 //! ```
-//! use fjson::Error;
-//!
 //! const INPUT: &str = r#"
 //! // This is a JSON value with comments and trailing commas
 //! {
@@ -103,7 +99,7 @@
 //!     "public": true,
 //! }"#;
 //!
-//! fn main() -> Result<(), Error> {
+//! fn main() -> Result<(), fjson::Error> {
 //!     let output = fjson::to_json_compact(INPUT)?;
 //!     println!("{}", output);
 //!     Ok(())
@@ -121,7 +117,6 @@
 //!
 //! ```
 //! use serde::Deserialize;
-//! use serde_json::from_str;
 //!
 //! #[derive(Debug, Deserialize)]
 //! struct Project {
@@ -148,7 +143,7 @@
 //!
 //! fn main() {
 //!     let output = fjson::to_json_compact(INPUT).unwrap();
-//!     let project: Project = from_str(&output).unwrap();
+//!     let project: Project = serde_json::from_str(&output).unwrap();
 //!     println!("{:#?}", project);
 //! }
 //! ```
@@ -166,48 +161,63 @@ use std::fmt::Write;
 pub use error::Error;
 use scanner::Scanner;
 
-/// Parses and formats JSON with C-style comments and trailing for readability
-/// and is intended for human viewing.
+/// Parses and formats JSON with C-style comments and trailing commas.
+///
+/// The output is formatted according to the default options and is intended for
+/// consumption by humans.
 pub fn to_jsonc(input: &str) -> Result<String, Error> {
     let mut out = String::with_capacity(input.len() + 128);
     to_jsonc_writer(&mut out, input)?;
     Ok(out)
 }
 
-/// Parses and formats JSON to the provided writer with C-style comments and
-/// trailing commas for readability and is intended for human viewing.
+/// Parses and formats JSON with C-style comments and trailing commas to the
+/// provided writer.
+///
+/// The output is formatted according to the default options and is intended for
+/// consumption by humans.
 pub fn to_jsonc_writer<W: Write>(w: &mut W, input: &str) -> Result<(), Error> {
     let root = ast::parse(input)?;
     format::write_jsonc(w, &root)?;
     Ok(())
 }
 
-/// Parses JSON with C-style comments and trailing commas, and formats into
-/// valid "pretty" JSON intended for human viewing.
+/// Parses JSONC and formats the output into "pretty" printed JSON.
+///
+/// All comments and whitespace are stripped from the input and is formatted
+/// according to the default options.
 pub fn to_json(input: &str) -> Result<String, Error> {
     let mut out = String::with_capacity(input.len() + 128);
     to_json_writer(&mut out, input)?;
     Ok(out)
 }
 
-/// Parses JSON with C-style comments and trailing commas, and formats to the
-/// provided writer into valid "pretty" JSON intended for human viewing.
+/// Parses JSONC and formats the output into "pretty" printed JSON to the
+/// provided writer.
+///
+/// All comments and whitespace are stripped from the input and is formatted
+/// according to the default options.
 pub fn to_json_writer<W: Write>(w: &mut W, input: &str) -> Result<(), Error> {
     let root = ast::parse_iter(Scanner::new(input).without_metadata())?;
     format::write_jsonc(w, &root)?;
     Ok(())
 }
 
-/// Parses JSON with C-style comments and trailing commas, and serializes into
-/// valid compact JSON intended for comptuer consumption.
+/// Parses JSONC and formats the output into valid, compact JSON.
+///
+/// All comments and whitespace are stripped from the input and is formatted to
+/// be compact JSON, not intended for consumption by humans.
 pub fn to_json_compact(input: &str) -> Result<String, Error> {
     let mut out = String::with_capacity(input.len());
     to_json_writer_compact(&mut out, input)?;
     Ok(out)
 }
 
-/// Parses JSON with C-style comments and trailing commas, and serializes to the
-/// provided writer into valid compact JSON intended for comptuer consumption.
+/// Parses JSONC and formats the output into valid, compact JSON to the provided
+/// writer.
+///
+/// All comments and whitespace are stripped from the input and is formatted to
+/// be compact JSON, not intended for consumption by humans.
 pub fn to_json_writer_compact<W: Write>(w: &mut W, input: &str) -> Result<(), Error> {
     format::write_json_compact_iter(w, Scanner::new(input).without_metadata())?;
     Ok(())
