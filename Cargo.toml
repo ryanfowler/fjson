@@ -5,6 +5,7 @@ authors = ["Ryan Fowler"]
 edition = "2021"
 description = "A library for parsing and formatting json with C-style comments and trailing commas"
 repository = "https://github.com/ryanfowler/fjson"
+documentation = "https://docs.rs/fjson"
 license = "MIT"
 keywords = ["json", "jsonc", "hjson", "format", "decode"]
 categories = ["compilers", "development-tools", "encoding", "parsing"]
