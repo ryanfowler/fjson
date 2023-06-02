@@ -247,7 +247,7 @@ impl<'a> Scanner<'a> {
             }
         }
         Ok(Event {
-            token: Token::LineComment(&self.input[(start + 2..end)]),
+            token: Token::LineComment(&self.input[start + 2..end]),
             range: start..end,
         })
     }
