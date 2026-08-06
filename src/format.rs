@@ -2,6 +2,8 @@
 
 use std::fmt::{Error, Write};
 
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
+
 use crate::{
     ast::{ArrayValue, Comment, Metadata, ObjectValue, Root, Value, ValueToken},
     scanner::{ScanResult, Token},
@@ -77,7 +79,7 @@ pub fn write_jsonc<W: Write>(w: &mut W, root: &Root) -> Result<(), Error> {
 pub fn write_jsonc_opts<W: Write>(w: &mut W, root: &Root, opts: &Options) -> Result<(), Error> {
     let mut ctx = Context {
         w,
-        current_line_chars: 0,
+        current_line_width: 0,
         opts: *opts,
     };
     for meta in &root.meta_above {
@@ -95,7 +97,7 @@ pub fn write_jsonc_opts<W: Write>(w: &mut W, root: &Root, opts: &Options) -> Res
 
 struct Context<'a, W: Write> {
     w: &'a mut W,
-    current_line_chars: usize,
+    current_line_width: usize,
     opts: Options<'a>,
 }
 
@@ -124,9 +126,9 @@ impl<'a, W: Write> Context<'a, W> {
     ) -> Result<(), Error> {
         let length = vals.len();
         let same_line = allow_sameline
-            && self.opts.line_length > self.current_line_chars()
+            && self.opts.line_length > self.current_line_width()
             && self
-                .can_fit_object(vals, self.opts.line_length - self.current_line_chars())
+                .can_fit_object(vals, self.opts.line_length - self.current_line_width())
                 .is_some();
 
         self.write_char('{')?;
@@ -172,9 +174,9 @@ impl<'a, W: Write> Context<'a, W> {
     ) -> Result<(), Error> {
         let length = vals.len();
         let same_line = allow_sameline
-            && self.opts.line_length > self.current_line_chars()
+            && self.opts.line_length > self.current_line_width()
             && self
-                .can_fit_array(vals, self.opts.line_length - self.current_line_chars())
+                .can_fit_array(vals, self.opts.line_length - self.current_line_width())
                 .is_some();
 
         self.write_char('[')?;
@@ -216,8 +218,8 @@ impl<'a, W: Write> Context<'a, W> {
         }
     }
 
-    fn current_line_chars(&self) -> usize {
-        self.current_line_chars
+    fn current_line_width(&self) -> usize {
+        self.current_line_width
     }
 
     fn write_metadata(&mut self, meta: &Metadata) -> Result<(), Error> {
@@ -243,7 +245,7 @@ impl<'a, W: Write> Context<'a, W> {
                 if let Some(i) = c.rfind('\n') {
                     // If the block comment contains newlines, adjust the
                     // internal value of chars written for the current line.
-                    self.current_line_chars = c[(i + 1)..].chars().count();
+                    self.current_line_width = c[(i + 1)..].width();
                 }
                 self.write_str("*/")
             }
@@ -269,19 +271,21 @@ impl<'a, W: Write> Context<'a, W> {
 
     fn write_str(&mut self, s: &str) -> Result<(), Error> {
         self.w.write_str(s)?;
-        self.current_line_chars += s.chars().count();
+        self.current_line_width += s.width();
         Ok(())
     }
 
     fn write_newline(&mut self) -> Result<(), Error> {
         self.write_char('\n')?;
-        self.current_line_chars = 0;
+        self.current_line_width = 0;
         Ok(())
     }
 
     fn write_char(&mut self, c: char) -> Result<(), Error> {
         self.w.write_char(c)?;
-        self.current_line_chars += 1;
+        // Control characters have no display width (width() returns None);
+        // treat them as 0 columns.
+        self.current_line_width += c.width().unwrap_or(0);
         Ok(())
     }
 
@@ -290,7 +294,7 @@ impl<'a, W: Write> Context<'a, W> {
         let remaining = match val {
             ValueToken::Object(v) => return self.can_fit_object(v, space),
             ValueToken::Array(v) => return self.can_fit_array(v, space),
-            ValueToken::String(v) => remaining - (2 + v.chars().count() as i64),
+            ValueToken::String(v) => remaining - (2 + v.width() as i64),
             ValueToken::Number(v) => remaining - v.len() as i64,
             ValueToken::Bool(v) => {
                 if *v {
@@ -329,7 +333,7 @@ impl<'a, W: Write> Context<'a, W> {
                     if !v.comments.is_empty() {
                         return None;
                     }
-                    remaining -= k.chars().count() as i64;
+                    remaining -= k.width() as i64;
                     if remaining < 0 {
                         return None;
                     }
@@ -600,5 +604,78 @@ mod tests {
         let mut json_compact_iter2 = String::new();
         write_json_compact_iter(&mut json_compact_iter2, Scanner::new(&json_compact_iter)).unwrap();
         assert_eq!(&json_compact_iter2, &json_compact_iter);
+    }
+
+    #[test]
+    fn test_format_wide_chars_roundtrip() {
+        // CJK characters (display width 2 per char) and emoji (display width 2).
+        let input = r#"{"cjk": "中文测试", "emoji": "🎉🔥"}"#;
+        let root = parse(input).unwrap();
+
+        // Format with default options.
+        let mut output = String::new();
+        write_jsonc(&mut output, &root).unwrap();
+
+        // Round-trip: parse the formatted output and format again.
+        let root2 = parse(&output).unwrap();
+        let mut output2 = String::new();
+        write_jsonc(&mut output2, &root2).unwrap();
+        assert_eq!(output, output2);
+    }
+
+    #[test]
+    fn test_format_wide_chars_line_breaking() {
+        // Wide characters with a narrow line length should trigger line breaks
+        // at the correct display width rather than at the scalar count.
+        let input = r#"{"a": "中文", "bb": "value"}"#;
+        let root = parse(input).unwrap();
+
+        // Use a line_length that is wide enough for one CJK key-value pair
+        // but not both, to exercise the can_fit_object decision with wide chars.
+        let opts = Options::default()
+            .with_line_length(18)
+            .with_max_object_pairs_per_line(2);
+        let mut output = String::new();
+        write_jsonc_opts(&mut output, &root, &opts).unwrap();
+
+        // Round-trip should still succeed.
+        let root2 = parse(&output).unwrap();
+        let mut output2 = String::new();
+        write_jsonc_opts(&mut output2, &root2, &opts).unwrap();
+        assert_eq!(output, output2);
+    }
+
+    #[test]
+    fn test_format_wide_chars_block_comment() {
+        // Block comment with wide characters after the last newline.
+        let input = r#"{"a": /* wide
+中文 */ "value"}"#;
+        let root = parse(input).unwrap();
+
+        let mut output = String::new();
+        write_jsonc(&mut output, &root).unwrap();
+
+        // Round-trip: parsed output must re-format identically.
+        let root2 = parse(&output).unwrap();
+        let mut output2 = String::new();
+        write_jsonc(&mut output2, &root2).unwrap();
+        assert_eq!(output, output2);
+    }
+
+    #[test]
+    fn test_format_zero_width_chars() {
+        // Zero-width space (U+200B) has chars().count() == 1 but width() == 0.
+        // U+200B (zero-width space) has width() == 0 but chars().count() == 1.
+        let input = "{\"a\": \"a\u{200B}b\"}";
+        let root = parse(input).unwrap();
+
+        let mut output = String::new();
+        write_jsonc(&mut output, &root).unwrap();
+
+        // Round-trip: parsed output must re-format identically.
+        let root2 = parse(&output).unwrap();
+        let mut output2 = String::new();
+        write_jsonc(&mut output2, &root2).unwrap();
+        assert_eq!(output, output2);
     }
 }
