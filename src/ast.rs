@@ -64,7 +64,7 @@ pub enum Comment<'a> {
 const RECURSION_LIMIT: u8 = 128;
 
 /// Parse the provided JSON string into a `Root` object.
-pub fn parse(input: &str) -> Result<Root, Error> {
+pub fn parse(input: &str) -> Result<Root<'_>, Error> {
     parse_iter(Scanner::new(input))
 }
 
