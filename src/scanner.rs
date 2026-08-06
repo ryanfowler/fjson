@@ -146,7 +146,16 @@ impl<'a> Scanner<'a> {
         } else {
             curr
         };
-        if curr != '0' {
+        if curr == '0' {
+            // RFC 8259: a leading zero must not be followed by another digit.
+            // Note: "-0" is valid (the '-' is consumed above) and passes here
+            // because the '0' is the only digit.
+            if let Some(&(i, c)) = self.peek_char() {
+                if c.is_ascii_digit() {
+                    return Err(Error::UnexpectedCharacter(i, c));
+                }
+            }
+        } else {
             self.skip_digits();
         }
 
@@ -564,5 +573,31 @@ mod tests {
         let scanner = Scanner::new(input);
         let output = scanner.map(|v| v.unwrap()).collect::<Vec<_>>();
         assert_eq!(output, vec![exp]);
+    }
+
+    #[test]
+    fn test_number_leading_zero_rejected() {
+        for invalid in ["05", "00", "0123", "-05", "-00"] {
+            let scanner = Scanner::new(invalid);
+            let results: Vec<_> = scanner.collect();
+            assert!(
+                results.iter().any(|r| r.is_err()),
+                "expected error for input: {invalid}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_number_leading_zero_valid() {
+        for valid in ["0", "-0", "0.5", "0e10", "0E10", "0.0e1"] {
+            let mut scanner = Scanner::new(valid);
+            let event = scanner
+                .next()
+                .expect("expected an event")
+                .expect("expected Ok");
+            assert_eq!(event.token, Token::Number(valid));
+            assert_eq!(&valid[event.range.clone()], valid);
+            assert!(scanner.next().is_none(), "expected no more events");
+        }
     }
 }
