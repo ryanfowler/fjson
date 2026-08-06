@@ -338,11 +338,9 @@ impl<'a, W: Write> Context<'a, W> {
                         ValueToken::Object(_) => return None,
                         _ => {}
                     }
-                    match self.can_fit_value(&v.token, remaining as usize) {
-                        None => return None,
-                        Some(size) => {
-                            remaining = size as i64;
-                        }
+                    {
+                        let size = self.can_fit_value(&v.token, remaining as usize)?;
+                        remaining = size as i64;
                     }
                 }
             }
@@ -381,11 +379,9 @@ impl<'a, W: Write> Context<'a, W> {
                         ValueToken::Object(_) => return None,
                         _ => {}
                     }
-                    match self.can_fit_value(&v.token, remaining as usize) {
-                        None => return None,
-                        Some(size) => {
-                            remaining = size as i64;
-                        }
+                    {
+                        let size = self.can_fit_value(&v.token, remaining as usize)?;
+                        remaining = size as i64;
                     }
                 }
             }
@@ -413,10 +409,7 @@ where
     I: Iterator<Item = ScanResult<'a>>,
 {
     for result in iter.validate() {
-        let event = match result {
-            Ok(event) => event,
-            Err(err) => return Err(err),
-        };
+        let event = result?;
         match event.token {
             Token::ObjectStart => w.write_char('{')?,
             Token::ObjectEnd => w.write_char('}')?,
